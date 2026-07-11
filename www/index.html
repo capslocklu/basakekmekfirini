@@ -196,6 +196,14 @@
         <input type="date" id="filter-date" onchange="renderOrders()">
         <input type="text" id="filter-search" placeholder="Müşteri ara..." oninput="renderOrders()">
       </div>
+      <div class="filter-row">
+        <select id="sort-order" onchange="renderOrders()" style="flex:1;">
+          <option value="date-desc">Tarih (Azalan)</option>
+          <option value="date-asc">Tarih (Artan)</option>
+          <option value="created-desc">En Yeni Sipariş</option>
+          <option value="created-asc">En Eski Sipariş</option>
+        </select>
+      </div>
       <div id="orders-summary"></div>
       <div id="orders-list"></div>
     </div>
@@ -605,10 +613,17 @@ async function deleteOrder(id){
 function renderOrders(){
   const dateFilter = document.getElementById('filter-date').value;
   const search = document.getElementById('filter-search').value.trim().toLowerCase();
+  const sortOrder = document.getElementById('sort-order').value;
   const canViewAll = session.role==='admin' || session.permissions.order_viewall;
   let list = orders.filter(o => canViewAll || o.createdBy===session.username);
   if(dateFilter) list = list.filter(o=>o.date===dateFilter);
   if(search) list = list.filter(o=>o.customer.toLowerCase().includes(search));
+  list = list.slice().sort((a,b)=>{
+    if(sortOrder==='date-asc') return a.date.localeCompare(b.date) || a.createdAt-b.createdAt;
+    if(sortOrder==='date-desc') return b.date.localeCompare(a.date) || b.createdAt-a.createdAt;
+    if(sortOrder==='created-asc') return a.createdAt-b.createdAt;
+    return b.createdAt-a.createdAt; // created-desc (default)
+  });
   document.getElementById('orders-count').textContent = list.length + ' sipariş';
 
   const summaryEl = document.getElementById('orders-summary');
