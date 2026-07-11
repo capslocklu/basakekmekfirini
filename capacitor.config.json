@@ -1,0 +1,12 @@
+{
+  "appId": "com.basakekmek.siparis",
+  "appName": "Başak Ekmek Fırını",
+  "webDir": "www",
+  "backgroundColor": "#4A2E1E",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "backgroundColor": "#4A2E1E"
+  }
+}
