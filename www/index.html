@@ -26,6 +26,26 @@
     --white:#FFFDF9;
     --shadow: 0 4px 14px rgba(74,46,30,0.14);
   }
+  body.dark-mode{
+    --crust:#EDE0CC;
+    --crust-dark:#F5EEDD;
+    --crumb:#211A13;
+    --crumb-soft:#2C2119;
+    --wheat:#E0A73E;
+    --wheat-soft:#3A2C1A;
+    --oven:#D9714A;
+    --oven-dark:#C15A34;
+    --tan:#B49A7C;
+    --ok:#7CB86B;
+    --danger:#E06A55;
+    --white:#2A2018;
+    --shadow: 0 4px 14px rgba(0,0,0,0.4);
+  }
+  @media print{
+    body *{ visibility:hidden; }
+    #report-print-area, #report-print-area *{ visibility:visible; }
+    #report-print-area{ position:absolute; top:0; left:0; width:100%; padding:20px; color:#000; display:block !important; }
+  }
   *{box-sizing:border-box;}
   body{margin:0;background:var(--crumb);color:var(--crust-dark);font-family:'Inter',sans-serif;-webkit-tap-highlight-color:transparent;}
   h1,h2,h3,.display{font-family:'Fraunces',serif;}
@@ -86,6 +106,7 @@
   .paid-check input{width:12px;height:12px;margin:0;accent-color:var(--ok);}
   .paid-check.is-paid{color:var(--ok);font-weight:600;}
   .badge{font-size:8.5px;padding:1px 5px;border-radius:20px;font-weight:600;}
+  .quick-chip{background:var(--wheat-soft);color:#6B4E10;border:none;border-radius:20px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;}
   .badge-new{background:#F0CE87;color:#6B4E10;}
   .badge-done{background:#DDEACB;color:#4A6238;}
   .empty{text-align:center;color:var(--tan);padding:50px 20px;font-size:13.5px;}
@@ -166,6 +187,9 @@
         <input type="checkbox" id="remember-me" checked style="width:auto;">
         Beni hatırla
       </label>
+      <div style="text-align:center;margin-top:10px;">
+        <a href="#" onclick="openForgotModal();return false;" style="color:var(--oven);font-size:12.5px;text-decoration:underline;">Şifremi unuttum</a>
+      </div>
       <div class="login-hint">İlk giriş için varsayılan yönetici hesabı:<br><b>admin / admin123</b> — lütfen ilk girişten sonra şifreyi değiştirin.</div>
     </div>
   </div>
@@ -227,6 +251,27 @@
       <div id="staff-list"></div>
     </div>
 
+    <!-- REPORT -->
+    <div class="view" id="view-report">
+      <div class="section-head"><h2>Rapor</h2></div>
+      <div class="filter-row">
+        <select id="report-period" onchange="renderReport()" style="flex:1;">
+          <option value="today">Bugün</option>
+          <option value="week">Bu Hafta</option>
+          <option value="month">Bu Ay</option>
+          <option value="all">Tüm Zamanlar</option>
+        </select>
+      </div>
+      <div id="report-totals"></div>
+      <label style="display:block;font-size:12px;font-weight:600;color:var(--tan);margin:16px 0 8px;text-transform:uppercase;letter-spacing:.03em;">Ürün Bazında Adet</label>
+      <div id="report-products"></div>
+      <div style="display:flex;gap:8px;margin-top:16px;">
+        <button class="btn btn-ghost" style="flex:1;" onclick="exportReportCSV()">Excel'e Aktar (CSV)</button>
+        <button class="btn btn-ghost" style="flex:1;" onclick="printReport()">Yazdır</button>
+      </div>
+      <div id="report-print-area" style="display:none;"></div>
+    </div>
+
     <!-- SETTINGS -->
     <div class="view" id="view-settings">
       <div class="section-head"><h2>Hesabım</h2></div>
@@ -236,12 +281,32 @@
       </div>
       <div class="field"><label>Yeni Şifre</label><input id="new-pass" type="password" placeholder="Yeni şifre"></div>
       <button class="btn btn-primary" onclick="changeOwnPassword()">Şifreyi Güncelle</button>
+
+      <label style="display:block;font-size:12px;font-weight:600;color:var(--tan);margin:20px 0 8px;text-transform:uppercase;letter-spacing:.03em;">Şifremi Unuttum Kurtarma</label>
+      <div class="field"><label>Güvenlik Sorusu</label><input id="settings-secq" type="text" placeholder="Ör: İlk evcil hayvanınızın adı?"></div>
+      <div class="field"><label>Cevap</label><input id="settings-seca" type="text" placeholder="Cevabınız"></div>
+      <button class="btn btn-ghost" onclick="saveSecurityQuestion()">Güvenlik Sorusunu Kaydet</button>
+
+      <label style="display:flex;align-items:center;gap:8px;margin:22px 0 8px;font-size:14px;color:var(--crust-dark);cursor:pointer;">
+        <input type="checkbox" id="dark-mode-toggle" onchange="toggleDarkMode()" style="width:auto;">
+        Karanlık Mod
+      </label>
+
       <p style="font-size:11.5px;color:var(--tan);margin-top:22px;line-height:1.5;" id="sync-explainer">Bu uygulama Firebase üzerinden çalışıyor: sipariş, ürün ve personel verileri internet üzerinden tüm cihazlarla anlık olarak senkronize edilir.</p>
+
+      <div id="activity-log-section" style="display:none;margin-top:24px;">
+        <label style="display:block;font-size:12px;font-weight:600;color:var(--tan);margin-bottom:8px;text-transform:uppercase;letter-spacing:.03em;">Aktivite Kaydı (son 20)</label>
+        <div id="activity-log-list"></div>
+      </div>
     </div>
 
     <button class="fab" id="fab-new-order" onclick="openOrderModal()">+</button>
 
     <div class="bottomnav">
+      <button class="navbtn" data-view="report" onclick="switchView('report')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-4"/></svg>
+        Rapor
+      </button>
       <button class="navbtn active" data-view="orders" onclick="switchView('orders')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 4v16"/></svg>
         Siparişler
@@ -268,7 +333,9 @@
     <div class="modal-head"><h3 id="order-modal-title">Yeni Sipariş</h3><button class="close-x" onclick="closeModal('modal-order')">✕</button></div>
     <input type="hidden" id="order-edit-id">
     <div class="field"><label>Tarih</label><input type="date" id="order-date"></div>
-    <div class="field"><label>Müşteri Adı</label><input type="text" id="order-customer" placeholder="Ör: Ayşe Yılmaz"></div>
+    <div class="field"><label>Müşteri Adı</label><input type="text" id="order-customer" list="customer-suggestions" placeholder="Ör: Ayşe Yılmaz"></div>
+    <datalist id="customer-suggestions"></datalist>
+    <div id="quick-products" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;"></div>
     <label style="display:block;font-size:12px;font-weight:600;color:var(--tan);margin-bottom:8px;text-transform:uppercase;letter-spacing:.03em;">Ürünler</label>
     <div id="order-items-wrap"></div>
     <button class="add-item-btn" onclick="addOrderItemRow()">+ Ürün Ekle</button>
@@ -284,6 +351,7 @@
     <div class="modal-head"><h3 id="product-modal-title">Yeni Ürün</h3><button class="close-x" onclick="closeModal('modal-product')">✕</button></div>
     <input type="hidden" id="product-id">
     <div class="field"><label>Ürün Adı</label><input type="text" id="product-name" placeholder="Ör: Köy Ekmeği"></div>
+    <div class="field"><label>Birim Fiyat (₺, opsiyonel)</label><input type="number" step="0.01" min="0" id="product-price" placeholder="Ör: 15.00"></div>
     <button class="btn btn-primary" onclick="saveProduct()">Kaydet</button>
   </div>
 </div>
@@ -305,7 +373,32 @@
   </div>
 </div>
 
-<div class="toast" id="toast"></div>
+<!-- CUSTOMER HISTORY MODAL -->
+<div class="modal-overlay" id="modal-customer-history">
+  <div class="modal-sheet">
+    <div class="modal-head"><h3 id="customer-history-title">Müşteri Geçmişi</h3><button class="close-x" onclick="closeModal('modal-customer-history')">✕</button></div>
+    <div id="customer-history-summary" class="summary-box" style="display:block;margin-bottom:12px;"></div>
+    <div id="customer-history-list"></div>
+  </div>
+</div>
+
+<!-- FORGOT PASSWORD MODAL -->
+<div class="modal-overlay" id="modal-forgot">
+  <div class="modal-sheet">
+    <div class="modal-head"><h3>Şifremi Unuttum</h3><button class="close-x" onclick="closeModal('modal-forgot')">✕</button></div>
+    <div id="forgot-step-1">
+      <div class="field"><label>Kullanıcı Adı</label><input type="text" id="forgot-username" placeholder="kullanici.adi"></div>
+      <button class="btn btn-primary" onclick="forgotStep1()">Devam Et</button>
+      <div class="login-error" id="forgot-error-1"></div>
+    </div>
+    <div id="forgot-step-2" style="display:none;">
+      <div class="field"><label id="forgot-question-label">Güvenlik Sorusu</label><input type="text" id="forgot-answer" placeholder="Cevabınız"></div>
+      <div class="field"><label>Yeni Şifre</label><input type="text" id="forgot-newpass" placeholder="Yeni şifre"></div>
+      <button class="btn btn-primary" onclick="forgotStep2()">Şifreyi Sıfırla</button>
+      <div class="login-error" id="forgot-error-2"></div>
+    </div>
+  </div>
+</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -436,6 +529,19 @@ async function saveUsers(){ await storageSet('users', JSON.stringify(users)); }
 async function saveProducts(){ await storageSet('products', JSON.stringify(products)); }
 async function saveOrders(){ await storageSet('orders', JSON.stringify(orders)); }
 
+let activityLog = [];
+async function loadActivity(){
+  try{ const v = await storageGet('activity'); activityLog = v ? JSON.parse(v) : []; }catch(e){ activityLog = []; }
+}
+async function logActivity(action){
+  try{
+    const entry = { ts: Date.now(), user: (session? session.name : '—'), action };
+    activityLog.unshift(entry);
+    if(activityLog.length>200) activityLog = activityLog.slice(0,200);
+    await storageSet('activity', JSON.stringify(activityLog));
+  }catch(e){}
+}
+
 async function backgroundSync(){
   if(db) return; // Firestore zaten canlı (onSnapshot) güncelliyor, polling'e gerek yok
   document.getElementById('sync-label').textContent = 'güncelleniyor...';
@@ -466,6 +572,7 @@ async function doLogin(){
   applyPermissionUI();
   switchView('orders');
   startRealtimeSync();
+  await loadActivity();
   if(!db && !syncTimer) syncTimer = setInterval(backgroundSync, 6000);
   document.getElementById('sync-label').textContent = db ? 'canlı' : (hasClaudeStorage ? 'senkronize' : 'yerel kayıt');
   toast('Hoş geldiniz, ' + found.name);
@@ -485,6 +592,7 @@ async function tryAutoLogin(){
   applyPermissionUI();
   switchView('orders');
   startRealtimeSync();
+  await loadActivity();
   if(!db && !syncTimer) syncTimer = setInterval(backgroundSync, 6000);
   document.getElementById('sync-label').textContent = db ? 'canlı' : (hasClaudeStorage ? 'senkronize' : 'yerel kayıt');
   return true;
@@ -499,6 +607,48 @@ function doLogout(){
   document.getElementById('view-login').classList.add('active');
   document.getElementById('login-user').value='';
   document.getElementById('login-pass').value='';
+}
+
+/* ---------- FORGOT PASSWORD ---------- */
+async function openForgotModal(){
+  await loadAll();
+  document.getElementById('forgot-username').value='';
+  document.getElementById('forgot-answer').value='';
+  document.getElementById('forgot-newpass').value='';
+  document.getElementById('forgot-error-1').textContent='';
+  document.getElementById('forgot-error-2').textContent='';
+  document.getElementById('forgot-step-1').style.display='block';
+  document.getElementById('forgot-step-2').style.display='none';
+  document.getElementById('modal-forgot').classList.add('active');
+}
+let forgotTargetUser = null;
+function forgotStep1(){
+  const u = document.getElementById('forgot-username').value.trim();
+  const found = users.find(x=>x.username.toLowerCase()===u.toLowerCase());
+  const err = document.getElementById('forgot-error-1');
+  if(!found){ err.textContent = 'Bu kullanıcı adı bulunamadı.'; return; }
+  if(!found.security_question || !found.security_answer){
+    err.textContent = 'Bu kullanıcı için güvenlik sorusu tanımlanmamış. Lütfen bir yöneticinizden Personel sekmesinden şifrenizi sıfırlamasını isteyin.';
+    return;
+  }
+  forgotTargetUser = found;
+  document.getElementById('forgot-question-label').textContent = found.security_question;
+  document.getElementById('forgot-step-1').style.display='none';
+  document.getElementById('forgot-step-2').style.display='block';
+}
+async function forgotStep2(){
+  const answer = document.getElementById('forgot-answer').value.trim().toLowerCase();
+  const newpass = document.getElementById('forgot-newpass').value;
+  const err = document.getElementById('forgot-error-2');
+  if(!forgotTargetUser){ err.textContent='Bir hata oluştu, tekrar deneyin.'; return; }
+  if(answer !== (forgotTargetUser.security_answer||'').trim().toLowerCase()){
+    err.textContent = 'Cevap yanlış.'; return;
+  }
+  if(!newpass){ err.textContent = 'Yeni şifre girin.'; return; }
+  const u = users.find(x=>x.username===forgotTargetUser.username);
+  if(u){ u.password = newpass; await saveUsers(); }
+  closeModal('modal-forgot');
+  toast('Şifreniz güncellendi, şimdi giriş yapabilirsiniz.');
 }
 
 function applyPermissionUI(){
@@ -518,9 +668,16 @@ function switchView(name){
   if(name==='orders') renderOrders();
   if(name==='products') renderProducts();
   if(name==='staff') renderStaff();
+  if(name==='report') renderReport();
   if(name==='settings'){
     document.getElementById('settings-name').textContent = session.name;
     document.getElementById('settings-role').textContent = session.role==='admin'?'Yönetici':'Personel';
+    document.getElementById('settings-secq').value = session.security_question||'';
+    document.getElementById('settings-seca').value = session.security_answer||'';
+    document.getElementById('dark-mode-toggle').checked = document.body.classList.contains('dark-mode');
+    const canSeeActivity = session.role==='admin';
+    document.getElementById('activity-log-section').style.display = canSeeActivity ? 'block' : 'none';
+    if(canSeeActivity) renderActivityLog();
   }
 }
 
@@ -538,9 +695,28 @@ function orderItemRowTemplate(selectedId, qty){
 function addOrderItemRow(selectedId, qty){
   document.getElementById('order-items-wrap').insertAdjacentHTML('beforeend', orderItemRowTemplate(selectedId, qty));
 }
-function openOrderModal(id){
+function openOrderModal(id, duplicateFrom){
   if(products.length===0){ toast('Önce Ürünler sekmesinden ürün ekleyin'); return; }
   document.getElementById('order-items-wrap').innerHTML='';
+
+  // Müşteri önerileri (sık kullanılanlar)
+  const customerCounts = {};
+  orders.forEach(o=>{ customerCounts[o.customer] = (customerCounts[o.customer]||0)+1; });
+  const topCustomers = Object.keys(customerCounts).sort((a,b)=>customerCounts[b]-customerCounts[a]).slice(0,15);
+  document.getElementById('customer-suggestions').innerHTML = topCustomers.map(c=>`<option value="${escapeHtml(c)}">`).join('');
+
+  // Sık kullanılan ürünler (hızlı seçim çipleri)
+  const productCounts = {};
+  orders.forEach(o=>o.items.forEach(it=>{ productCounts[it.productId] = (productCounts[it.productId]||0)+1; }));
+  const topProductIds = Object.keys(productCounts).sort((a,b)=>productCounts[b]-productCounts[a]).slice(0,5);
+  const quickWrap = document.getElementById('quick-products');
+  if(topProductIds.length){
+    quickWrap.innerHTML = topProductIds.map(pid=>{
+      const prod = products.find(p=>p.id===pid);
+      return prod ? `<button type="button" class="quick-chip" onclick="addOrderItemRow('${prod.id}',1)">+ ${escapeHtml(prod.name)}</button>` : '';
+    }).join('');
+  } else { quickWrap.innerHTML=''; }
+
   if(id){
     const o = orders.find(x=>x.id===id);
     if(!o){ toast('Sipariş bulunamadı'); return; }
@@ -551,6 +727,14 @@ function openOrderModal(id){
     document.getElementById('order-address').value = o.address||'';
     document.getElementById('order-note').value = o.note||'';
     o.items.forEach(it=>addOrderItemRow(it.productId, it.qty));
+  } else if(duplicateFrom){
+    document.getElementById('order-modal-title').textContent = 'Yeni Sipariş (Kopya)';
+    document.getElementById('order-edit-id').value = '';
+    document.getElementById('order-date').value = new Date().toISOString().slice(0,10);
+    document.getElementById('order-customer').value = duplicateFrom.customer;
+    document.getElementById('order-address').value = duplicateFrom.address||'';
+    document.getElementById('order-note').value = duplicateFrom.note||'';
+    duplicateFrom.items.forEach(it=>addOrderItemRow(it.productId, it.qty));
   } else {
     document.getElementById('order-modal-title').textContent = 'Yeni Sipariş';
     document.getElementById('order-edit-id').value = '';
@@ -561,6 +745,10 @@ function openOrderModal(id){
     addOrderItemRow();
   }
   document.getElementById('modal-order').classList.add('active');
+}
+function duplicateOrder(id){
+  const o = orders.find(x=>x.id===id); if(!o) return;
+  openOrderModal(null, o);
 }
 async function saveOrder(){
   const editId = document.getElementById('order-edit-id').value;
@@ -574,7 +762,7 @@ async function saveOrder(){
     const pid = r.querySelector('.item-product').value;
     const qty = parseInt(r.querySelector('.item-qty').value)||1;
     const prod = products.find(p=>p.id===pid);
-    return prod ? {productId:pid, name:prod.name, qty} : null;
+    return prod ? {productId:pid, name:prod.name, qty, price:prod.price||0} : null;
   }).filter(Boolean);
   if(items.length===0){ toast('En az bir ürün seçin'); return; }
   if(editId){
@@ -584,6 +772,7 @@ async function saveOrder(){
     closeModal('modal-order');
     renderOrders();
     toast('Sipariş güncellendi');
+    logActivity(`Siparişi güncelledi: ${customer}`);
     return;
   }
   const newOrder = {
@@ -595,6 +784,7 @@ async function saveOrder(){
   closeModal('modal-order');
   renderOrders();
   toast('Sipariş kaydedildi');
+  logActivity(`Yeni sipariş ekledi: ${customer}`);
 }
 async function toggleOrderStatus(id){
   const o = orders.find(x=>x.id===id); if(!o) return;
@@ -605,10 +795,40 @@ async function togglePaid(id){
   const o = orders.find(x=>x.id===id); if(!o) return;
   o.paid = !o.paid;
   await saveOrders(); renderOrders();
+  logActivity(`${o.paid?'Ödeme aldı':'Ödemeyi bekleyene aldı'}: ${o.customer}`);
 }
 async function deleteOrder(id){
+  const o = orders.find(x=>x.id===id);
   orders = orders.filter(x=>x.id!==id);
   await saveOrders(); renderOrders();
+  if(o) logActivity(`Siparişi sildi: ${o.customer}`);
+}
+function openCustomerHistory(encodedName){
+  const name = decodeURIComponent(encodedName);
+  const canViewAll = session.role==='admin' || session.permissions.order_viewall;
+  const history = orders.filter(o => o.customer===name && (canViewAll || o.createdBy===session.username))
+    .sort((a,b)=>b.createdAt-a.createdAt);
+  document.getElementById('customer-history-title').textContent = name;
+  let paid=0, pending=0;
+  history.forEach(o=>o.paid?paid++:pending++);
+  document.getElementById('customer-history-summary').innerHTML = `
+    <div class="summary-title" style="margin-bottom:6px;">${history.length} sipariş</div>
+    <div style="display:flex;gap:16px;font-size:13px;color:var(--crumb);">
+      <div><b style="color:#7CB86B;">${paid}</b> ödendi</div>
+      <div><b style="color:#E0A73E;">${pending}</b> bekliyor</div>
+    </div>`;
+  document.getElementById('customer-history-list').innerHTML = history.map(o=>`
+    <div class="ticket">
+      <div class="ticket-row">
+        <div class="ticket-items">${o.items.map(it=>`${escapeHtml(it.name)} <b>×${it.qty}</b>`).join(', ')}</div>
+        <div class="ticket-date">${formatDate(o.date)}</div>
+      </div>
+      ${o.address?`<div class="ticket-meta"><span class="lbl">Adres:</span> ${escapeHtml(o.address)}</div>`:''}
+      <div class="ticket-footer">
+        <span class="badge ${o.paid?'badge-done':'badge-new'}">${o.paid?'Ödendi':'Bekliyor'}</span>
+      </div>
+    </div>`).join('') || '<div class="empty">Sipariş bulunamadı.</div>';
+  document.getElementById('modal-customer-history').classList.add('active');
 }
 function renderOrders(){
   const dateFilter = document.getElementById('filter-date').value;
@@ -645,7 +865,7 @@ function renderOrders(){
   wrap.innerHTML = list.map(o=>`
     <div class="ticket">
       <div class="ticket-row">
-        <div class="ticket-customer">${escapeHtml(o.customer)}</div>
+        <div class="ticket-customer" style="cursor:pointer;text-decoration:underline dotted;" onclick="openCustomerHistory('${encodeURIComponent(o.customer)}')">${escapeHtml(o.customer)}</div>
         <div class="ticket-items">${o.items.map(it=>`${escapeHtml(it.name)} <b>×${it.qty}</b>`).join(', ')}</div>
         <div class="ticket-date">${formatDate(o.date)}</div>
       </div>
@@ -654,6 +874,7 @@ function renderOrders(){
         <div class="ticket-address">${o.address?escapeHtml(o.address):'—'}</div>
         <label class="paid-check ${o.paid?'is-paid':''}"><input type="checkbox" ${o.paid?'checked':''} onchange="togglePaid('${o.id}')"> ${o.paid?'Ödeme alındı':'Ödeme bekliyor'}</label>
         <div style="display:flex;gap:4px;flex:none;">
+          <button class="icon-btn" onclick="duplicateOrder('${o.id}')" title="Kopyala">⧉</button>
           <button class="icon-btn" onclick="openOrderModal('${o.id}')">✎</button>
           <button class="icon-btn danger" onclick="deleteOrder('${o.id}')">🗑</button>
         </div>
@@ -670,20 +891,25 @@ function openProductModal(id){
     const p = products.find(x=>x.id===id);
     document.getElementById('product-modal-title').textContent='Ürünü Düzenle';
     document.getElementById('product-name').value = p.name;
+    document.getElementById('product-price').value = p.price||'';
   } else {
     document.getElementById('product-modal-title').textContent='Yeni Ürün';
     document.getElementById('product-name').value='';
+    document.getElementById('product-price').value='';
   }
   document.getElementById('modal-product').classList.add('active');
 }
 async function saveProduct(){
   const id = document.getElementById('product-id').value;
   const name = document.getElementById('product-name').value.trim();
+  const price = parseFloat(document.getElementById('product-price').value)||0;
   if(!name){ toast('Ürün adı girin'); return; }
   if(id){
-    const p = products.find(x=>x.id===id); p.name=name;
+    const p = products.find(x=>x.id===id); p.name=name; p.price=price;
+    logActivity(`Ürünü güncelledi: ${name}`);
   } else {
-    products.push({id:'p_'+Date.now(), name});
+    products.push({id:'p_'+Date.now(), name, price});
+    logActivity(`Yeni ürün ekledi: ${name}`);
   }
   await saveProducts();
   closeModal('modal-product');
@@ -693,8 +919,10 @@ async function saveProduct(){
 async function deleteProduct(id){
   const canEdit = session.role==='admin' || session.permissions.products;
   if(!canEdit) return;
+  const p = products.find(x=>x.id===id);
   products = products.filter(x=>x.id!==id);
   await saveProducts(); renderProducts();
+  if(p) logActivity(`Ürünü sildi: ${p.name}`);
 }
 function renderProducts(){
   const canEdit = session.role==='admin' || session.permissions.products;
@@ -703,7 +931,7 @@ function renderProducts(){
   const wrap = document.getElementById('products-list');
   let html = products.map(p=>`
     <div class="list-item">
-      <div class="info"><b>${escapeHtml(p.name)}</b></div>
+      <div class="info"><b>${escapeHtml(p.name)}</b>${p.price?`<span>₺${p.price.toFixed(2)}</span>`:''}</div>
       ${canEdit?`<div style="display:flex;gap:6px;">
         <button class="icon-btn" onclick="openProductModal('${p.id}')">✎</button>
         <button class="icon-btn danger" onclick="deleteProduct('${p.id}')">🗑</button>
@@ -756,9 +984,11 @@ async function saveStaff(){
   if(oldUsername){
     const u = users.find(x=>x.username===oldUsername);
     Object.assign(u, {name, username, password, permissions});
+    logActivity(`Personeli güncelledi: ${name}`);
   } else {
     if(users.some(x=>x.username.toLowerCase()===username.toLowerCase())){ toast('Bu kullanıcı adı zaten var'); return; }
     users.push({name, username, password, role:'personel', permissions});
+    logActivity(`Yeni personel ekledi: ${name}`);
   }
   await saveUsers();
   closeModal('modal-staff');
@@ -769,8 +999,10 @@ async function deleteStaff(username){
   const canEdit = session.role==='admin' || session.permissions.staff;
   if(!canEdit) return;
   if(username==='admin'){ toast('Ana yönetici silinemez'); return; }
+  const u = users.find(x=>x.username===username);
   users = users.filter(x=>x.username!==username);
   await saveUsers(); renderStaff();
+  if(u) logActivity(`Personeli sildi: ${u.name}`);
 }
 function renderStaff(){
   const canEdit = session.role==='admin' || session.permissions.staff;
@@ -806,6 +1038,124 @@ async function changeOwnPassword(){
   toast('Şifre güncellendi');
 }
 
+async function saveSecurityQuestion(){
+  const q = document.getElementById('settings-secq').value.trim();
+  const a = document.getElementById('settings-seca').value.trim();
+  if(!q || !a){ toast('Soru ve cevabı doldurun'); return; }
+  const u = users.find(x=>x.username===session.username);
+  u.security_question = q; u.security_answer = a;
+  session.security_question = q; session.security_answer = a;
+  await saveUsers();
+  toast('Güvenlik sorusu kaydedildi');
+}
+
+/* ---------- DARK MODE ---------- */
+function toggleDarkMode(){
+  const on = document.getElementById('dark-mode-toggle').checked;
+  document.body.classList.toggle('dark-mode', on);
+  try{ localStorage.setItem('basak_theme', on ? 'dark' : 'light'); }catch(e){}
+}
+function applyStoredTheme(){
+  let theme = null;
+  try{ theme = localStorage.getItem('basak_theme'); }catch(e){}
+  if(theme==='dark') document.body.classList.add('dark-mode');
+}
+
+/* ---------- ACTIVITY LOG ---------- */
+function renderActivityLog(){
+  const wrap = document.getElementById('activity-log-list');
+  if(!activityLog.length){ wrap.innerHTML = '<div class="empty">Henüz aktivite yok.</div>'; return; }
+  wrap.innerHTML = activityLog.slice(0,20).map(a=>`
+    <div class="list-item" style="padding:8px 12px;">
+      <div class="info"><b style="font-size:12.5px;">${escapeHtml(a.action)}</b><span>${escapeHtml(a.user)} · ${new Date(a.ts).toLocaleString('tr-TR')}</span></div>
+    </div>`).join('');
+}
+
+/* ---------- REPORT ---------- */
+function getReportRangeOrders(){
+  const period = document.getElementById('report-period').value;
+  const canViewAll = session.role==='admin' || session.permissions.order_viewall;
+  let list = orders.filter(o => canViewAll || o.createdBy===session.username);
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0,10);
+  if(period==='today'){
+    list = list.filter(o=>o.date===todayStr);
+  } else if(period==='week'){
+    const d = new Date(now); const day = (d.getDay()+6)%7; // Monday=0
+    d.setDate(d.getDate()-day); d.setHours(0,0,0,0);
+    const weekStart = d.toISOString().slice(0,10);
+    list = list.filter(o=>o.date>=weekStart && o.date<=todayStr);
+  } else if(period==='month'){
+    const monthPrefix = todayStr.slice(0,7);
+    list = list.filter(o=>o.date.startsWith(monthPrefix));
+  }
+  return list;
+}
+function renderReport(){
+  const list = getReportRangeOrders();
+  const totalsEl = document.getElementById('report-totals');
+  let orderCount = list.length;
+  let paidCount=0, pendingCount=0, paidAmount=0, pendingAmount=0, totalQty=0;
+  const productTotals = {};
+  list.forEach(o=>{
+    const orderAmount = o.items.reduce((s,it)=>s+(it.qty*(it.price||0)),0);
+    if(o.paid){ paidCount++; paidAmount+=orderAmount; } else { pendingCount++; pendingAmount+=orderAmount; }
+    o.items.forEach(it=>{ productTotals[it.name]=(productTotals[it.name]||0)+it.qty; totalQty+=it.qty; });
+  });
+  const hasPrices = list.some(o=>o.items.some(it=>it.price));
+  totalsEl.innerHTML = `
+    <div class="summary-box" style="display:block;">
+      <div class="summary-title" style="margin-bottom:8px;">${orderCount} sipariş · ${totalQty} adet</div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--crumb);">
+        <div><b style="color:#7CB86B;">${paidCount}</b> ödendi${hasPrices?` (₺${paidAmount.toFixed(2)})`:''}</div>
+        <div><b style="color:#E0A73E;">${pendingCount}</b> bekliyor${hasPrices?` (₺${pendingAmount.toFixed(2)})`:''}</div>
+      </div>
+      ${hasPrices?`<div style="margin-top:8px;font-size:13px;color:var(--wheat);font-weight:700;">Toplam Ciro: ₺${(paidAmount+pendingAmount).toFixed(2)}</div>`:''}
+    </div>`;
+  const prodEl = document.getElementById('report-products');
+  const rows = Object.entries(productTotals).sort((a,b)=>b[1]-a[1]);
+  prodEl.innerHTML = rows.length ? rows.map(([name,qty])=>`
+    <div class="list-item"><div class="info"><b>${escapeHtml(name)}</b></div><div style="font-weight:700;color:var(--crust);">×${qty}</div></div>`).join('')
+    : '<div class="empty">Bu dönemde sipariş yok.</div>';
+}
+function exportReportCSV(){
+  const list = getReportRangeOrders();
+  if(!list.length){ toast('Aktarılacak sipariş yok'); return; }
+  const header = ['Tarih','Müşteri','Ürünler','Toplam Adet','Adres','Not','Ödeme Durumu','Tutar (₺)'];
+  const rows = list.map(o=>{
+    const itemsStr = o.items.map(it=>`${it.name} x${it.qty}`).join(' | ');
+    const qtySum = o.items.reduce((s,it)=>s+it.qty,0);
+    const amount = o.items.reduce((s,it)=>s+(it.qty*(it.price||0)),0);
+    return [o.date, o.customer, itemsStr, qtySum, o.address||'', o.note||'', o.paid?'Ödendi':'Bekliyor', amount.toFixed(2)];
+  });
+  const csvLines = [header, ...rows].map(r=>r.map(cell=>`"${String(cell).replace(/"/g,'""')}"`).join(','));
+  const csvContent = '\uFEFF' + csvLines.join('\r\n');
+  const blob = new Blob([csvContent], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `siparisler-${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('CSV indirildi');
+}
+function printReport(){
+  const list = getReportRangeOrders();
+  const periodLabel = document.getElementById('report-period').selectedOptions[0].textContent;
+  const productTotals = {};
+  list.forEach(o=>o.items.forEach(it=>{ productTotals[it.name]=(productTotals[it.name]||0)+it.qty; }));
+  const rows = Object.entries(productTotals).sort((a,b)=>b[1]-a[1]);
+  let html = `<h2>Başak Ekmek Fırını — Üretim Listesi</h2><p>${periodLabel} · ${new Date().toLocaleDateString('tr-TR')}</p><table style="width:100%;border-collapse:collapse;">
+    <tr style="border-bottom:2px solid #333;"><th style="text-align:left;padding:6px;">Ürün</th><th style="text-align:right;padding:6px;">Toplam Adet</th></tr>
+    ${rows.map(([name,qty])=>`<tr style="border-bottom:1px solid #ccc;"><td style="padding:6px;">${escapeHtml(name)}</td><td style="text-align:right;padding:6px;">${qty}</td></tr>`).join('')}
+  </table><h3 style="margin-top:24px;">Sipariş Detayları</h3><table style="width:100%;border-collapse:collapse;font-size:13px;">
+    <tr style="border-bottom:2px solid #333;"><th style="text-align:left;padding:6px;">Müşteri</th><th style="text-align:left;padding:6px;">Ürünler</th><th style="text-align:left;padding:6px;">Tarih</th><th style="text-align:left;padding:6px;">Ödeme</th></tr>
+    ${list.map(o=>`<tr style="border-bottom:1px solid #ccc;"><td style="padding:6px;">${escapeHtml(o.customer)}</td><td style="padding:6px;">${o.items.map(it=>`${escapeHtml(it.name)} x${it.qty}`).join(', ')}</td><td style="padding:6px;">${formatDate(o.date)}</td><td style="padding:6px;">${o.paid?'Ödendi':'Bekliyor'}</td></tr>`).join('')}
+  </table>`;
+  const printArea = document.getElementById('report-print-area');
+  printArea.innerHTML = html;
+  window.print();
+}
+
 /* ---------- helpers ---------- */
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function formatDate(d){
@@ -817,6 +1167,7 @@ function formatDate(d){
 
 /* ---------- init ---------- */
 (async function init(){
+  applyStoredTheme();
   const loggedInAuto = await tryAutoLogin();
   if(!loggedInAuto){
     await loadAll();
