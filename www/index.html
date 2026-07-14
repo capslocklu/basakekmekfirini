@@ -24,22 +24,25 @@
     --ok:#5C7A4B;
     --danger:#A43B2E;
     --white:#FFFDF9;
+    --surface:#3A2416;
+    --surface-text:#FAF3E4;
+    --input-border:#E3D5BD;
     --shadow: 0 4px 14px rgba(74,46,30,0.14);
   }
   body.dark-mode{
-    --crust:#EDE0CC;
-    --crust-dark:#F5EEDD;
-    --crumb:#211A13;
-    --crumb-soft:#2C2119;
+    --crust:#F2E6D2;
+    --crust-dark:#EDE0CC;
+    --crumb:#1E1710;
+    --crumb-soft:#2A2117;
     --wheat:#E0A73E;
-    --wheat-soft:#3A2C1A;
-    --oven:#D9714A;
-    --oven-dark:#C15A34;
-    --tan:#B49A7C;
+    --oven:#DE7A50;
+    --oven-dark:#B5482A;
+    --tan:#C9AE8C;
     --ok:#7CB86B;
     --danger:#E06A55;
-    --white:#2A2018;
-    --shadow: 0 4px 14px rgba(0,0,0,0.4);
+    --white:#2B2117;
+    --input-border:#4A3B29;
+    --shadow: 0 4px 14px rgba(0,0,0,0.45);
   }
   @media print{
     body *{ visibility:hidden; }
@@ -52,7 +55,7 @@
   #app{max-width:480px;margin:0 auto;min-height:100vh;background:var(--crumb);display:flex;flex-direction:column;position:relative;}
 
   /* ---- Top bar ---- */
-  .topbar{background:var(--crust);color:var(--crumb);padding:18px 18px 16px;display:flex;align-items:center;justify-content:space-between;box-shadow:var(--shadow);position:sticky;top:0;z-index:10;}
+  .topbar{background:var(--surface);color:var(--surface-text);padding:18px 18px 16px;display:flex;align-items:center;justify-content:space-between;box-shadow:var(--shadow);position:sticky;top:0;z-index:10;}
   .brand{display:flex;align-items:center;gap:10px;}
   .brand svg{flex:none;}
   .brand-text .name{font-family:'Fraunces',serif;font-weight:700;font-size:17px;line-height:1.1;}
@@ -75,7 +78,7 @@
   .login-card p.tag{color:var(--tan);font-size:13px;margin:0 0 26px;}
   .field{margin-bottom:14px;text-align:left;}
   .field label{display:block;font-size:12px;font-weight:600;color:var(--tan);margin-bottom:5px;text-transform:uppercase;letter-spacing:.03em;}
-  input,select,textarea{width:100%;padding:12px 13px;border-radius:10px;border:1.5px solid #E3D5BD;background:var(--white);font-size:15px;font-family:'Inter',sans-serif;color:var(--crust-dark);}
+  input,select,textarea{width:100%;padding:12px 13px;border-radius:10px;border:1.5px solid var(--input-border);background:var(--white);font-size:15px;font-family:'Inter',sans-serif;color:var(--crust-dark);}
   input:focus,select:focus,textarea:focus{outline:none;border-color:var(--oven);}
   textarea{resize:vertical;min-height:56px;}
   .btn{display:block;width:100%;padding:13px;border-radius:10px;border:none;font-size:15px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;}
@@ -115,10 +118,10 @@
   /* ---- Filters ---- */
   .filter-row{display:flex;gap:8px;margin-bottom:14px;}
   .filter-row input,.filter-row select{font-size:13px;padding:9px 10px;}
-  .summary-box{background:var(--crust);border-radius:12px;padding:10px 14px;margin-bottom:12px;box-shadow:var(--shadow);display:flex;align-items:center;flex-wrap:wrap;gap:8px;}
-  .summary-box .summary-title{font-size:10.5px;color:var(--wheat-soft);text-transform:uppercase;letter-spacing:.05em;font-weight:600;flex:none;white-space:nowrap;}
+  .summary-box{background:var(--surface);border-radius:12px;padding:10px 14px;margin-bottom:12px;box-shadow:var(--shadow);display:flex;align-items:center;flex-wrap:wrap;gap:8px;}
+  .summary-box .summary-title{font-size:10.5px;color:var(--wheat);text-transform:uppercase;letter-spacing:.05em;font-weight:600;flex:none;white-space:nowrap;}
   .summary-tags{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;flex:1 1 auto;}
-  .summary-tag{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:var(--crumb);font-size:12px;padding:4px 10px;border-radius:20px;white-space:nowrap;}
+  .summary-tag{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:var(--surface-text);font-size:12px;padding:4px 10px;border-radius:20px;white-space:nowrap;}
   .summary-tag b{color:var(--wheat);font-weight:700;}
 
   /* ---- Order form ---- */
@@ -160,7 +163,7 @@
   .modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
   .modal-head h3{margin:0;font-size:18px;color:var(--crust);}
   .close-x{background:var(--crumb-soft);border:none;width:30px;height:30px;border-radius:50%;font-size:16px;color:var(--tan);cursor:pointer;}
-  .toast{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:var(--crust-dark);color:var(--crumb);padding:10px 18px;border-radius:30px;font-size:13px;z-index:100;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:opacity .25s;}
+  .toast{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:var(--surface);color:var(--surface-text);padding:10px 18px;border-radius:30px;font-size:13px;z-index:100;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:opacity .25s;}
   .toast.show{opacity:1;}
   .locked-note{background:#F3E3D3;color:var(--oven-dark);font-size:12px;padding:10px 12px;border-radius:10px;margin-bottom:14px;}
 </style>
@@ -813,7 +816,7 @@ function openCustomerHistory(encodedName){
   history.forEach(o=>o.paid?paid++:pending++);
   document.getElementById('customer-history-summary').innerHTML = `
     <div class="summary-title" style="margin-bottom:6px;">${history.length} sipariş</div>
-    <div style="display:flex;gap:16px;font-size:13px;color:var(--crumb);">
+    <div style="display:flex;gap:16px;font-size:13px;color:var(--surface-text);">
       <div><b style="color:#7CB86B;">${paid}</b> ödendi</div>
       <div><b style="color:#E0A73E;">${pending}</b> bekliyor</div>
     </div>`;
@@ -1106,7 +1109,7 @@ function renderReport(){
   totalsEl.innerHTML = `
     <div class="summary-box" style="display:block;">
       <div class="summary-title" style="margin-bottom:8px;">${orderCount} sipariş · ${totalQty} adet</div>
-      <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--crumb);">
+      <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--surface-text);">
         <div><b style="color:#7CB86B;">${paidCount}</b> ödendi${hasPrices?` (₺${paidAmount.toFixed(2)})`:''}</div>
         <div><b style="color:#E0A73E;">${pendingCount}</b> bekliyor${hasPrices?` (₺${pendingAmount.toFixed(2)})`:''}</div>
       </div>
