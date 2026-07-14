@@ -603,7 +603,6 @@ async function tryAutoLogin(){
 
 function doLogout(){
   session = null;
-  try{ localStorage.removeItem('basak_remember'); }catch(e){}
   stopRealtimeSync();
   if(syncTimer){ clearInterval(syncTimer); syncTimer=null; }
   document.getElementById('main-shell').style.display='none';
