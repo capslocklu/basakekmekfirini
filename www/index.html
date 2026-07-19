@@ -110,6 +110,10 @@
   .paid-check.is-paid{color:var(--ok);font-weight:600;}
   .badge{font-size:8.5px;padding:1px 5px;border-radius:20px;font-weight:600;}
   .quick-chip{background:var(--wheat-soft);color:#6B4E10;border:none;border-radius:20px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;}
+  .reminder-banner{background:var(--oven);color:#fff;border-radius:12px;padding:12px 14px;margin-bottom:12px;display:flex;align-items:flex-start;gap:10px;box-shadow:var(--shadow);}
+  .reminder-banner .txt{flex:1;font-size:13px;line-height:1.4;}
+  .reminder-banner .txt b{display:block;font-size:13.5px;margin-bottom:2px;}
+  .reminder-banner .close-x-light{background:rgba(255,255,255,.2);border:none;color:#fff;width:24px;height:24px;border-radius:50%;font-size:13px;cursor:pointer;flex:none;}
   .badge-new{background:#F0CE87;color:#6B4E10;}
   .badge-done{background:#DDEACB;color:#4A6238;}
   .empty{text-align:center;color:var(--tan);padding:50px 20px;font-size:13.5px;}
@@ -220,17 +224,25 @@
         <span class="count" id="orders-count">0 sipariş</span>
       </div>
       <div class="filter-row">
-        <input type="date" id="filter-date" onchange="renderOrders()">
-        <input type="text" id="filter-search" placeholder="Müşteri ara..." oninput="renderOrders()">
+        <input type="date" id="filter-date-start" onchange="renderOrders()" title="Başlangıç tarihi">
+        <input type="date" id="filter-date-end" onchange="renderOrders()" title="Bitiş tarihi">
       </div>
       <div class="filter-row">
+        <input type="text" id="filter-search" placeholder="Müşteri ara..." oninput="renderOrders()">
+      </div>
+      <div class="filter-row" style="position:relative;">
+        <button type="button" class="btn btn-ghost btn-sm" style="flex:1;text-align:left;position:relative;" onclick="toggleProductFilterPanel()">
+          <span id="product-filter-label">Tüm Ürünler</span> ▾
+        </button>
         <select id="sort-order" onchange="renderOrders()" style="flex:1;">
           <option value="date-desc">Tarih (Azalan)</option>
           <option value="date-asc">Tarih (Artan)</option>
           <option value="created-desc">En Yeni Sipariş</option>
           <option value="created-asc">En Eski Sipariş</option>
         </select>
+        <div id="product-filter-panel" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:10px;z-index:30;max-height:240px;overflow-y:auto;margin-top:4px;"></div>
       </div>
+      <div id="tomorrow-reminder"></div>
       <div id="orders-summary"></div>
       <div id="orders-list"></div>
     </div>
@@ -258,12 +270,17 @@
     <div class="view" id="view-report">
       <div class="section-head"><h2>Rapor</h2></div>
       <div class="filter-row">
-        <select id="report-period" onchange="renderReport()" style="flex:1;">
+        <select id="report-period" onchange="onReportPeriodChange()" style="flex:1;">
           <option value="today">Bugün</option>
           <option value="week">Bu Hafta</option>
           <option value="month">Bu Ay</option>
           <option value="all">Tüm Zamanlar</option>
+          <option value="custom">Özel Tarih Aralığı</option>
         </select>
+      </div>
+      <div class="filter-row" id="report-custom-range" style="display:none;">
+        <input type="date" id="report-date-start" onchange="renderReport()" title="Başlangıç tarihi">
+        <input type="date" id="report-date-end" onchange="renderReport()" title="Bitiş tarihi">
       </div>
       <div id="report-totals"></div>
       <label style="display:block;font-size:12px;font-weight:600;color:var(--tan);margin:16px 0 8px;text-transform:uppercase;letter-spacing:.03em;">Ürün Bazında Adet</label>
@@ -832,14 +849,90 @@ function openCustomerHistory(encodedName){
     </div>`).join('') || '<div class="empty">Sipariş bulunamadı.</div>';
   document.getElementById('modal-customer-history').classList.add('active');
 }
+function getTomorrowStr(){
+  const d = new Date(); d.setDate(d.getDate()+1);
+  return d.toISOString().slice(0,10);
+}
+function renderTomorrowReminder(){
+  const el = document.getElementById('tomorrow-reminder');
+  const now = new Date();
+  const tomorrow = getTomorrowStr();
+  let dismissed = null;
+  try{ dismissed = localStorage.getItem('basak_reminder_dismissed'); }catch(e){}
+  if(now.getHours() < 12 || dismissed === tomorrow){ el.innerHTML=''; return; }
+  const canViewAll = session.role==='admin' || session.permissions.order_viewall;
+  const tomorrowOrders = orders.filter(o => o.date===tomorrow && (canViewAll || o.createdBy===session.username));
+  if(tomorrowOrders.length===0){ el.innerHTML=''; return; }
+  const totals = {};
+  tomorrowOrders.forEach(o=>o.items.forEach(it=>{ totals[it.name]=(totals[it.name]||0)+it.qty; }));
+  const summary = Object.entries(totals).map(([n,q])=>`${n} ×${q}`).join(', ');
+  el.innerHTML = `<div class="reminder-banner">
+    <div class="txt"><b>Yarın (${formatDate(tomorrow)}) için ${tomorrowOrders.length} sipariş var</b>${escapeHtml(summary)}</div>
+    <button class="close-x-light" onclick="dismissTomorrowReminder()">✕</button>
+  </div>`;
+}
+function dismissTomorrowReminder(){
+  try{ localStorage.setItem('basak_reminder_dismissed', getTomorrowStr()); }catch(e){}
+  document.getElementById('tomorrow-reminder').innerHTML='';
+}
+let selectedProductFilters = new Set();
+function toggleProductFilterPanel(){
+  const panel = document.getElementById('product-filter-panel');
+  const isOpen = panel.style.display==='block';
+  panel.style.display = isOpen ? 'none' : 'block';
+  if(!isOpen) renderProductFilterPanel();
+}
+function renderProductFilterPanel(){
+  const panel = document.getElementById('product-filter-panel');
+  if(products.length===0){ panel.innerHTML = '<div class="empty" style="padding:10px;">Ürün yok</div>'; return; }
+  panel.innerHTML = products.map(p=>`
+    <label style="display:flex;align-items:center;gap:8px;padding:7px 4px;font-size:13.5px;color:var(--crust-dark);cursor:pointer;">
+      <input type="checkbox" value="${p.id}" ${selectedProductFilters.has(p.id)?'checked':''} onchange="toggleProductFilterChoice('${p.id}')" style="width:auto;">
+      ${escapeHtml(p.name)}
+    </label>`).join('') +
+    (selectedProductFilters.size ? `<button type="button" class="btn btn-ghost btn-sm" style="width:100%;margin-top:6px;" onclick="clearProductFilters()">Temizle</button>` : '');
+}
+function toggleProductFilterChoice(id){
+  if(selectedProductFilters.has(id)) selectedProductFilters.delete(id); else selectedProductFilters.add(id);
+  updateProductFilterLabel();
+  renderOrders();
+}
+function clearProductFilters(){
+  selectedProductFilters.clear();
+  document.getElementById('product-filter-panel').style.display='none';
+  updateProductFilterLabel();
+  renderOrders();
+}
+function updateProductFilterLabel(){
+  const label = document.getElementById('product-filter-label');
+  if(selectedProductFilters.size===0){ label.textContent = 'Tüm Ürünler'; return; }
+  if(selectedProductFilters.size===1){
+    const p = products.find(x=>x.id===[...selectedProductFilters][0]);
+    label.textContent = p ? p.name : '1 ürün';
+    return;
+  }
+  label.textContent = selectedProductFilters.size + ' ürün seçili';
+}
+document.addEventListener('click', function(e){
+  const panel = document.getElementById('product-filter-panel');
+  if(!panel) return;
+  const btn = e.target.closest('button');
+  const insidePanel = e.target.closest('#product-filter-panel');
+  const isToggleBtn = btn && btn.getAttribute('onclick')==='toggleProductFilterPanel()';
+  if(!insidePanel && !isToggleBtn) panel.style.display='none';
+});
+
 function renderOrders(){
-  const dateFilter = document.getElementById('filter-date').value;
+  const dateStart = document.getElementById('filter-date-start').value;
+  const dateEnd = document.getElementById('filter-date-end').value;
   const search = document.getElementById('filter-search').value.trim().toLowerCase();
   const sortOrder = document.getElementById('sort-order').value;
   const canViewAll = session.role==='admin' || session.permissions.order_viewall;
   let list = orders.filter(o => canViewAll || o.createdBy===session.username);
-  if(dateFilter) list = list.filter(o=>o.date===dateFilter);
+  if(dateStart) list = list.filter(o=>o.date>=dateStart);
+  if(dateEnd) list = list.filter(o=>o.date<=dateEnd);
   if(search) list = list.filter(o=>o.customer.toLowerCase().includes(search));
+  if(selectedProductFilters.size) list = list.filter(o=>o.items.some(it=>selectedProductFilters.has(it.productId)));
   list = list.slice().sort((a,b)=>{
     if(sortOrder==='date-asc') return a.date.localeCompare(b.date) || a.createdAt-b.createdAt;
     if(sortOrder==='date-desc') return b.date.localeCompare(a.date) || b.createdAt-a.createdAt;
@@ -847,6 +940,7 @@ function renderOrders(){
     return b.createdAt-a.createdAt; // created-desc (default)
   });
   document.getElementById('orders-count').textContent = list.length + ' sipariş';
+  renderTomorrowReminder();
 
   const summaryEl = document.getElementById('orders-summary');
   if(list.length===0){
@@ -1090,8 +1184,17 @@ function getReportRangeOrders(){
   } else if(period==='month'){
     const monthPrefix = todayStr.slice(0,7);
     list = list.filter(o=>o.date.startsWith(monthPrefix));
+  } else if(period==='custom'){
+    const start = document.getElementById('report-date-start').value;
+    const end = document.getElementById('report-date-end').value;
+    if(start) list = list.filter(o=>o.date>=start);
+    if(end) list = list.filter(o=>o.date<=end);
   }
   return list;
+}
+function onReportPeriodChange(){
+  document.getElementById('report-custom-range').style.display = document.getElementById('report-period').value==='custom' ? 'flex' : 'none';
+  renderReport();
 }
 function renderReport(){
   const list = getReportRangeOrders();
