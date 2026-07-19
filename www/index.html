@@ -948,7 +948,10 @@ function renderOrders(){
   } else {
     const totals = {};
     list.forEach(o=>o.items.forEach(it=>{ totals[it.name] = (totals[it.name]||0) + it.qty; }));
-    const titleSuffix = dateFilter ? formatDate(dateFilter) : 'Tüm Siparişler';
+    let titleSuffix = 'Tüm Siparişler';
+    if(dateStart && dateEnd) titleSuffix = `${formatDate(dateStart)} – ${formatDate(dateEnd)}`;
+    else if(dateStart) titleSuffix = formatDate(dateStart) + ' ve sonrası';
+    else if(dateEnd) titleSuffix = formatDate(dateEnd) + ' ve öncesi';
     const tags = Object.entries(totals).map(([name,qty])=>`<span class="summary-tag">${escapeHtml(name)} <b>×${qty}</b></span>`).join('');
     summaryEl.innerHTML = `<div class="summary-box"><div class="summary-title">Toplam · ${titleSuffix}</div><div class="summary-tags">${tags}</div></div>`;
   }
