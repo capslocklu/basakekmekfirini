@@ -272,6 +272,7 @@
       <div class="filter-row">
         <select id="report-period" onchange="onReportPeriodChange()" style="flex:1;">
           <option value="today">Bugün</option>
+          <option value="tomorrow">Yarın</option>
           <option value="week">Bu Hafta</option>
           <option value="month">Bu Ay</option>
           <option value="all">Tüm Zamanlar</option>
@@ -1359,6 +1360,9 @@ function getReportRangeOrders(){
   const todayStr = now.toISOString().slice(0,10);
   if(period==='today'){
     list = list.filter(o=>o.date===todayStr);
+  } else if(period==='tomorrow'){
+    const tomorrowStr = getTomorrowStr();
+    list = list.filter(o=>o.date===tomorrowStr);
   } else if(period==='week'){
     const d = new Date(now); const day = (d.getDay()+6)%7; // Monday=0
     d.setDate(d.getDate()-day); d.setHours(0,0,0,0);

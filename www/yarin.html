@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Yarının Üretimi — Başak Ekmek Fırını</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700;9..144,900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;background:#221A12;color:#F2E6D2;font-family:'Inter',sans-serif;min-height:100vh;}
+  .wrap{max-width:900px;margin:0 auto;padding:28px 20px 60px;}
+  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+  .brand{font-family:'Fraunces',serif;font-weight:700;font-size:20px;color:#E0A73E;}
+  .sync{font-size:12px;color:#8C6239;display:flex;align-items:center;gap:6px;}
+  .sync-dot{width:8px;height:8px;border-radius:50%;background:#7CB86B;animation:pulse 2s infinite;}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(124,184,107,.5);}70%{box-shadow:0 0 0 8px rgba(124,184,107,0);}100%{box-shadow:0 0 0 0 rgba(124,184,107,0);}}
+  h1{font-family:'Fraunces',serif;font-weight:900;font-size:clamp(32px,7vw,52px);margin:6px 0 2px;color:#FAF3E4;}
+  .subdate{font-size:clamp(15px,3vw,19px);color:#C9AE8C;margin-bottom:28px;}
+  .totals-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;margin-bottom:36px;}
+  .totals-card{background:#2B2117;border-radius:16px;padding:22px 20px;border-top:4px solid #E0A73E;}
+  .totals-card .qty{font-family:'Fraunces',serif;font-weight:900;font-size:clamp(36px,6vw,48px);color:#E0A73E;line-height:1;}
+  .totals-card .name{font-size:clamp(16px,2.5vw,20px);color:#F2E6D2;margin-top:6px;font-weight:600;}
+  h2.section{font-size:15px;text-transform:uppercase;letter-spacing:.06em;color:#8C6239;margin:0 0 14px;font-weight:700;}
+  .order-card{background:#2B2117;border-radius:12px;padding:16px 18px;margin-bottom:12px;border-left:4px dashed #E0A73E;}
+  .order-card .cust{font-family:'Fraunces',serif;font-weight:700;font-size:19px;color:#FAF3E4;}
+  .order-card .items{font-size:15px;color:#D9C6A8;margin-top:4px;}
+  .order-card .items b{color:#E0A73E;}
+  .order-card .meta{font-size:13px;color:#8C6239;margin-top:6px;}
+  .empty{text-align:center;padding:80px 20px;color:#8C6239;font-size:18px;}
+  .empty b{display:block;font-size:44px;margin-bottom:14px;}
+  .paid-badge{display:inline-block;font-size:11px;padding:2px 9px;border-radius:20px;margin-left:8px;vertical-align:middle;}
+  .paid-yes{background:#2E4326;color:#9CD98A;}
+  .paid-no{background:#4A2E1E;color:#E0A73E;}
+  footer{text-align:center;color:#5A452F;font-size:12px;margin-top:40px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand">🌾 Başak Ekmek Fırını</div>
+    <div class="sync"><span class="sync-dot"></span><span id="sync-label">canlı</span></div>
+  </div>
+  <h1>Yarının Üretimi</h1>
+  <div class="subdate" id="date-label">—</div>
+
+  <div id="content">
+    <div class="empty">Yükleniyor...</div>
+  </div>
+
+  <footer>Bu ekran otomatik olarak güncellenir · Kapatmadan bırakabilirsiniz</footer>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyAnCtP9iEQqbDS6CFH2U6yy56HDPUE_Kfc",
+  authDomain: "basak-ekmek-firini.firebaseapp.com",
+  projectId: "basak-ekmek-firini",
+  storageBucket: "basak-ekmek-firini.firebasestorage.app",
+  messagingSenderId: "905918687938",
+  appId: "1:905918687938:web:f7f6ef492b97d2c3b6695b"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+let productsCache = [];
+let ordersCache = [];
+
+function getTomorrowStr(){
+  const d = new Date(); d.setDate(d.getDate()+1);
+  return d.toISOString().slice(0,10);
+}
+function formatDateLong(d){
+  const [y,m,day] = d.split('-');
+  const aylar=['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+  const gunler=['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
+  const dateObj = new Date(y, m-1, day);
+  return `${parseInt(day)} ${aylar[parseInt(m)-1]} ${y}, ${gunler[dateObj.getDay()]}`;
+}
+function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function render(){
+  document.getElementById('date-label').textContent = formatDateLong(getTomorrowStr());
+  const tomorrow = getTomorrowStr();
+  const list = ordersCache.filter(o=>o.date===tomorrow);
+  const content = document.getElementById('content');
+
+  if(list.length===0){
+    content.innerHTML = `<div class="empty"><b>🌙</b>Yarın için henüz kayıtlı sipariş yok.</div>`;
+    return;
+  }
+
+  const totals = {};
+  list.forEach(o=>o.items.forEach(it=>{ totals[it.name]=(totals[it.name]||0)+it.qty; }));
+  const totalsHtml = Object.entries(totals).sort((a,b)=>b[1]-a[1]).map(([name,qty])=>`
+    <div class="totals-card"><div class="qty">${qty}</div><div class="name">${escapeHtml(name)}</div></div>
+  `).join('');
+
+  const ordersHtml = list.slice().sort((a,b)=>a.customer.localeCompare(b.customer,'tr')).map(o=>`
+    <div class="order-card">
+      <div class="cust">${escapeHtml(o.customer)}<span class="paid-badge ${o.paid?'paid-yes':'paid-no'}">${o.paid?'Ödendi':'Ödeme bekliyor'}</span></div>
+      <div class="items">${o.items.map(it=>`${escapeHtml(it.name)} <b>×${it.qty}</b>`).join(', ')}</div>
+      ${o.address?`<div class="meta">📍 ${escapeHtml(o.address)}</div>`:''}
+      ${o.note?`<div class="meta">📝 ${escapeHtml(o.note)}</div>`:''}
+    </div>
+  `).join('');
+
+  content.innerHTML = `
+    <h2 class="section">Toplam Üretim (${list.length} sipariş)</h2>
+    <div class="totals-grid">${totalsHtml}</div>
+    <h2 class="section">Sipariş Detayları</h2>
+    ${ordersHtml}
+  `;
+}
+
+async function init(){
+  try{
+    await firebase.auth().signInAnonymously();
+    db.collection('basak_app').doc('products').onSnapshot(snap=>{
+      if(snap.exists){ try{ productsCache = JSON.parse(snap.data().value); }catch(e){} }
+      render();
+    });
+    db.collection('basak_app').doc('orders').onSnapshot(snap=>{
+      if(snap.exists){ try{ ordersCache = JSON.parse(snap.data().value); }catch(e){} }
+      document.getElementById('sync-label').textContent = 'canlı';
+      render();
+    }, err=>{
+      document.getElementById('sync-label').textContent = 'bağlantı hatası';
+      console.warn(err);
+    });
+  }catch(e){
+    document.getElementById('content').innerHTML = '<div class="empty">Bağlantı kurulamadı, sayfayı yenileyin.</div>';
+  }
+}
+init();
+
+// Gece yarısı geçişinde "yarın" tarihi değişeceği için ekranı periyodik tazele
+setInterval(render, 60000);
+</script>
+</body>
+</html>
