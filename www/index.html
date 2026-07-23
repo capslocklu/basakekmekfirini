@@ -223,6 +223,7 @@
         <h2>Siparişler</h2>
         <span class="count" id="orders-count">0 sipariş</span>
       </div>
+      <button type="button" class="btn btn-ghost btn-sm" style="width:100%;margin-bottom:12px;" onclick="openRecurringManageModal()">🔁 Tekrarlanan Sipariş Şablonları</button>
       <div class="filter-row">
         <input type="date" id="filter-date-start" onchange="renderOrders()" title="Başlangıç tarihi">
         <input type="date" id="filter-date-end" onchange="renderOrders()" title="Bitiş tarihi">
@@ -242,6 +243,7 @@
         </select>
         <div id="product-filter-panel" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:10px;z-index:30;max-height:240px;overflow-y:auto;margin-top:4px;"></div>
       </div>
+      <div id="recurring-due-banner"></div>
       <div id="tomorrow-reminder"></div>
       <div id="orders-summary"></div>
       <div id="orders-list"></div>
@@ -420,6 +422,41 @@
   </div>
 </div>
 
+<!-- RECURRING TEMPLATES MANAGE MODAL -->
+<div class="modal-overlay" id="modal-recurring-manage">
+  <div class="modal-sheet">
+    <div class="modal-head"><h3>Tekrarlanan Sipariş Şablonları</h3><button class="close-x" onclick="closeModal('modal-recurring-manage')">✕</button></div>
+    <div id="recurring-list"></div>
+    <button class="btn btn-primary" style="margin-top:12px;" onclick="openRecurringEditModal()">+ Yeni Şablon Ekle</button>
+  </div>
+</div>
+
+<!-- RECURRING TEMPLATE EDIT MODAL -->
+<div class="modal-overlay" id="modal-recurring-edit">
+  <div class="modal-sheet">
+    <div class="modal-head"><h3 id="recurring-edit-title">Yeni Şablon</h3><button class="close-x" onclick="closeModal('modal-recurring-edit')">✕</button></div>
+    <input type="hidden" id="recurring-edit-id">
+    <div class="field"><label>Hangi Gün</label>
+      <select id="recurring-weekday">
+        <option value="1">Pazartesi</option>
+        <option value="2">Salı</option>
+        <option value="3">Çarşamba</option>
+        <option value="4">Perşembe</option>
+        <option value="5">Cuma</option>
+        <option value="6">Cumartesi</option>
+        <option value="0">Pazar</option>
+      </select>
+    </div>
+    <div class="field"><label>Müşteri Adı</label><input type="text" id="recurring-customer" list="customer-suggestions" placeholder="Ör: XYZ Firması"></div>
+    <label style="display:block;font-size:12px;font-weight:600;color:var(--tan);margin-bottom:8px;text-transform:uppercase;letter-spacing:.03em;">Ürünler</label>
+    <div id="recurring-items-wrap"></div>
+    <button class="add-item-btn" onclick="addRecurringItemRow()">+ Ürün Ekle</button>
+    <div class="field"><label>Adres</label><textarea id="recurring-address" placeholder="Teslimat adresi"></textarea></div>
+    <div class="field"><label>Not</label><textarea id="recurring-note" placeholder="Opsiyonel"></textarea></div>
+    <button class="btn btn-primary" onclick="saveRecurringTemplate()">Şablonu Kaydet</button>
+  </div>
+</div>
+
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -507,6 +544,7 @@ async function startRealtimeSync(){
   bind('users', v=>users=v);
   bind('products', v=>products=v);
   bind('orders', v=>orders=v);
+  bind('recurring_templates', v=>recurringTemplates=v);
 }
 
 let session = null; // {username, name, role, permissions}
@@ -543,11 +581,19 @@ async function loadAll(){
     const ov = await storageGet('orders');
     orders = ov ? JSON.parse(ov) : [];
   }catch(e){ orders = []; }
+
+  await loadRecurring();
 }
 
 async function saveUsers(){ await storageSet('users', JSON.stringify(users)); }
 async function saveProducts(){ await storageSet('products', JSON.stringify(products)); }
 async function saveOrders(){ await storageSet('orders', JSON.stringify(orders)); }
+
+let recurringTemplates = [];
+async function loadRecurring(){
+  try{ const v = await storageGet('recurring_templates'); recurringTemplates = v ? JSON.parse(v) : []; }catch(e){ recurringTemplates = []; }
+}
+async function saveRecurring(){ await storageSet('recurring_templates', JSON.stringify(recurringTemplates)); }
 
 let activityLog = [];
 async function loadActivity(){
@@ -747,9 +793,9 @@ function openOrderModal(id, duplicateFrom){
     document.getElementById('order-note').value = o.note||'';
     o.items.forEach(it=>addOrderItemRow(it.productId, it.qty));
   } else if(duplicateFrom){
-    document.getElementById('order-modal-title').textContent = 'Yeni Sipariş (Kopya)';
+    document.getElementById('order-modal-title').textContent = duplicateFrom.__fromTemplate ? 'Tekrarlanan Sipariş' : 'Yeni Sipariş (Kopya)';
     document.getElementById('order-edit-id').value = '';
-    document.getElementById('order-date').value = new Date().toISOString().slice(0,10);
+    document.getElementById('order-date').value = duplicateFrom.date || new Date().toISOString().slice(0,10);
     document.getElementById('order-customer').value = duplicateFrom.customer;
     document.getElementById('order-address').value = duplicateFrom.address||'';
     document.getElementById('order-note').value = duplicateFrom.note||'';
@@ -768,6 +814,127 @@ function openOrderModal(id, duplicateFrom){
 function duplicateOrder(id){
   const o = orders.find(x=>x.id===id); if(!o) return;
   openOrderModal(null, o);
+}
+
+/* ---------- RECURRING ORDER TEMPLATES ---------- */
+const WEEKDAY_NAMES = {0:'Pazar',1:'Pazartesi',2:'Salı',3:'Çarşamba',4:'Perşembe',5:'Cuma',6:'Cumartesi'};
+function recurringItemRowTemplate(selectedId, qty){
+  const opts = products.map(p=>`<option value="${p.id}" ${p.id===selectedId?'selected':''}>${p.name}</option>`).join('');
+  return `<div class="item-row">
+    <div class="field"><label>Ürün</label><select class="ritem-product">${opts||'<option value="">Ürün ekleyin</option>'}</select></div>
+    <div class="field qty"><label>Adet</label><input type="number" min="1" value="${qty||1}" class="ritem-qty"></div>
+    <button class="item-remove" onclick="this.parentElement.remove()">✕</button>
+  </div>`;
+}
+function addRecurringItemRow(selectedId, qty){
+  document.getElementById('recurring-items-wrap').insertAdjacentHTML('beforeend', recurringItemRowTemplate(selectedId, qty));
+}
+function openRecurringManageModal(){
+  renderRecurringList();
+  document.getElementById('modal-recurring-manage').classList.add('active');
+}
+function renderRecurringList(){
+  const wrap = document.getElementById('recurring-list');
+  if(recurringTemplates.length===0){ wrap.innerHTML = '<div class="empty">Henüz şablon eklenmedi.</div>'; return; }
+  wrap.innerHTML = recurringTemplates.map(t=>`
+    <div class="list-item" style="align-items:flex-start;">
+      <div class="info">
+        <b>${escapeHtml(t.customer)}</b>
+        <span>Her ${WEEKDAY_NAMES[t.weekday]} · ${t.items.map(it=>`${escapeHtml(it.name)} ×${it.qty}`).join(', ')}</span>
+      </div>
+      <div style="display:flex;gap:6px;">
+        <button class="icon-btn" onclick="openRecurringEditModal('${t.id}')">✎</button>
+        <button class="icon-btn danger" onclick="deleteRecurringTemplate('${t.id}')">🗑</button>
+      </div>
+    </div>`).join('');
+}
+function openRecurringEditModal(id){
+  document.getElementById('recurring-items-wrap').innerHTML='';
+  if(products.length===0){ toast('Önce Ürünler sekmesinden ürün ekleyin'); return; }
+  if(id){
+    const t = recurringTemplates.find(x=>x.id===id);
+    if(!t) return;
+    document.getElementById('recurring-edit-title').textContent = 'Şablonu Düzenle';
+    document.getElementById('recurring-edit-id').value = id;
+    document.getElementById('recurring-weekday').value = t.weekday;
+    document.getElementById('recurring-customer').value = t.customer;
+    document.getElementById('recurring-address').value = t.address||'';
+    document.getElementById('recurring-note').value = t.note||'';
+    t.items.forEach(it=>addRecurringItemRow(it.productId, it.qty));
+  } else {
+    document.getElementById('recurring-edit-title').textContent = 'Yeni Şablon';
+    document.getElementById('recurring-edit-id').value = '';
+    document.getElementById('recurring-weekday').value = '1';
+    document.getElementById('recurring-customer').value = '';
+    document.getElementById('recurring-address').value = '';
+    document.getElementById('recurring-note').value = '';
+    addRecurringItemRow();
+  }
+  document.getElementById('modal-recurring-edit').classList.add('active');
+}
+async function saveRecurringTemplate(){
+  const editId = document.getElementById('recurring-edit-id').value;
+  const weekday = parseInt(document.getElementById('recurring-weekday').value);
+  const customer = document.getElementById('recurring-customer').value.trim();
+  const address = document.getElementById('recurring-address').value.trim();
+  const note = document.getElementById('recurring-note').value.trim();
+  if(!customer){ toast('Müşteri adı girin'); return; }
+  const rows = [...document.querySelectorAll('#recurring-items-wrap .item-row')];
+  const items = rows.map(r=>{
+    const pid = r.querySelector('.ritem-product').value;
+    const qty = parseInt(r.querySelector('.ritem-qty').value)||1;
+    const prod = products.find(p=>p.id===pid);
+    return prod ? {productId:pid, name:prod.name, qty} : null;
+  }).filter(Boolean);
+  if(items.length===0){ toast('En az bir ürün seçin'); return; }
+  if(editId){
+    const t = recurringTemplates.find(x=>x.id===editId);
+    if(t) Object.assign(t, {weekday, customer, address, note, items});
+  } else {
+    recurringTemplates.push({id:'rt_'+Date.now(), weekday, customer, address, note, items, active:true});
+  }
+  await saveRecurring();
+  closeModal('modal-recurring-edit');
+  renderRecurringList();
+  renderRecurringDueBanner();
+  toast('Şablon kaydedildi');
+  logActivity(`Tekrarlanan sipariş şablonu kaydetti: ${customer}`);
+}
+async function deleteRecurringTemplate(id){
+  const t = recurringTemplates.find(x=>x.id===id);
+  recurringTemplates = recurringTemplates.filter(x=>x.id!==id);
+  await saveRecurring();
+  renderRecurringList();
+  renderRecurringDueBanner();
+  if(t) logActivity(`Tekrarlanan sipariş şablonunu sildi: ${t.customer}`);
+}
+function getNextOccurrenceDate(weekday){
+  const d = new Date();
+  const diff = (weekday - d.getDay() + 7) % 7;
+  d.setDate(d.getDate()+diff);
+  return d.toISOString().slice(0,10);
+}
+function renderRecurringDueBanner(){
+  const el = document.getElementById('recurring-due-banner');
+  if(!el) return;
+  if(!recurringTemplates.length){ el.innerHTML=''; return; }
+  const due = recurringTemplates.filter(t=>{
+    const targetDate = getNextOccurrenceDate(t.weekday);
+    return !orders.some(o=>o.customer===t.customer && o.date===targetDate);
+  });
+  if(due.length===0){ el.innerHTML=''; return; }
+  el.innerHTML = due.map(t=>{
+    const targetDate = getNextOccurrenceDate(t.weekday);
+    return `<div class="reminder-banner" style="background:var(--ok);">
+      <div class="txt"><b>${escapeHtml(t.customer)} — ${WEEKDAY_NAMES[t.weekday]} (${formatDate(targetDate)}) siparişi henüz girilmedi</b>${t.items.map(it=>`${escapeHtml(it.name)} ×${it.qty}`).join(', ')}</div>
+      <button class="close-x-light" onclick="createOrderFromTemplate('${t.id}')" title="Sipariş Oluştur" style="width:auto;padding:0 10px;border-radius:14px;">Oluştur</button>
+    </div>`;
+  }).join('');
+}
+function createOrderFromTemplate(id){
+  const t = recurringTemplates.find(x=>x.id===id); if(!t) return;
+  const targetDate = getNextOccurrenceDate(t.weekday);
+  openOrderModal(null, {customer:t.customer, address:t.address, note:t.note, items:t.items, date:targetDate, __fromTemplate:true});
 }
 async function saveOrder(){
   const editId = document.getElementById('order-edit-id').value;
@@ -941,6 +1108,7 @@ function renderOrders(){
   });
   document.getElementById('orders-count').textContent = list.length + ' sipariş';
   renderTomorrowReminder();
+  renderRecurringDueBanner();
 
   const summaryEl = document.getElementById('orders-summary');
   if(list.length===0){
