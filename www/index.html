@@ -223,27 +223,25 @@
         <h2>Siparişler</h2>
         <span class="count" id="orders-count">0 sipariş</span>
       </div>
-      <button type="button" class="btn btn-ghost btn-sm" style="width:100%;margin-bottom:12px;" onclick="openRecurringManageModal()">🔁 Tekrarlanan Sipariş Şablonları</button>
       <div class="filter-row">
         <input type="date" id="filter-date-start" onchange="renderOrders()" title="Başlangıç tarihi">
         <input type="date" id="filter-date-end" onchange="renderOrders()" title="Bitiş tarihi">
       </div>
-      <div class="filter-row">
-        <input type="text" id="filter-search" placeholder="Müşteri ara..." oninput="renderOrders()">
-      </div>
       <div class="filter-row" style="position:relative;">
-        <button type="button" class="btn btn-ghost btn-sm" style="flex:1;text-align:left;position:relative;" onclick="toggleProductFilterPanel()">
+        <input type="text" id="filter-search" placeholder="Müşteri ara..." oninput="renderOrders()" style="flex:1.3;">
+        <button type="button" class="btn btn-ghost btn-sm" style="flex:1;text-align:left;position:relative;padding-left:10px;" onclick="toggleProductFilterPanel()">
           <span id="product-filter-label">Tüm Ürünler</span> ▾
         </button>
+        <div id="product-filter-panel" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:10px;z-index:30;max-height:240px;overflow-y:auto;margin-top:4px;"></div>
+      </div>
+      <div class="filter-row">
         <select id="sort-order" onchange="renderOrders()" style="flex:1;">
           <option value="date-desc">Tarih (Azalan)</option>
           <option value="date-asc">Tarih (Artan)</option>
           <option value="created-desc">En Yeni Sipariş</option>
           <option value="created-asc">En Eski Sipariş</option>
         </select>
-        <div id="product-filter-panel" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:10px;z-index:30;max-height:240px;overflow-y:auto;margin-top:4px;"></div>
       </div>
-      <div id="recurring-due-banner"></div>
       <div id="tomorrow-reminder"></div>
       <div id="orders-summary"></div>
       <div id="orders-list"></div>
@@ -313,6 +311,10 @@
         <input type="checkbox" id="dark-mode-toggle" onchange="toggleDarkMode()" style="width:auto;">
         Karanlık Mod
       </label>
+
+      <label style="display:block;font-size:12px;font-weight:600;color:var(--tan);margin:22px 0 8px;text-transform:uppercase;letter-spacing:.03em;">🔁 Tekrarlanan Sipariş Şablonları</label>
+      <div id="recurring-due-banner"></div>
+      <button type="button" class="btn btn-ghost" style="width:100%;" onclick="openRecurringManageModal()">Şablonları Yönet</button>
 
       <p style="font-size:11.5px;color:var(--tan);margin-top:22px;line-height:1.5;" id="sync-explainer">Bu uygulama Firebase üzerinden çalışıyor: sipariş, ürün ve personel verileri internet üzerinden tüm cihazlarla anlık olarak senkronize edilir.</p>
 
@@ -726,11 +728,20 @@ function applyPermissionUI(){
 }
 
 /* ---------- NAV ---------- */
+let ordersDateDefaultsApplied = false;
 function switchView(name){
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   document.getElementById('view-'+name).classList.add('active');
   document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active', b.dataset.view===name));
-  if(name==='orders') renderOrders();
+  if(name==='orders'){
+    if(!ordersDateDefaultsApplied){
+      const todayStr = new Date().toISOString().slice(0,10);
+      document.getElementById('filter-date-start').value = todayStr;
+      document.getElementById('filter-date-end').value = todayStr;
+      ordersDateDefaultsApplied = true;
+    }
+    renderOrders();
+  }
   if(name==='products') renderProducts();
   if(name==='staff') renderStaff();
   if(name==='report') renderReport();
@@ -743,6 +754,7 @@ function switchView(name){
     const canSeeActivity = session.role==='admin';
     document.getElementById('activity-log-section').style.display = canSeeActivity ? 'block' : 'none';
     if(canSeeActivity) renderActivityLog();
+    renderRecurringDueBanner();
   }
 }
 
