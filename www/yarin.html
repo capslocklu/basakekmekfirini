@@ -15,7 +15,10 @@
   .sync-dot{width:8px;height:8px;border-radius:50%;background:#7CB86B;animation:pulse 2s infinite;}
   @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(124,184,107,.5);}70%{box-shadow:0 0 0 8px rgba(124,184,107,0);}100%{box-shadow:0 0 0 0 rgba(124,184,107,0);}}
   h1{font-family:'Fraunces',serif;font-weight:900;font-size:clamp(32px,7vw,52px);margin:6px 0 2px;color:#FAF3E4;}
-  .subdate{font-size:clamp(15px,3vw,19px);color:#C9AE8C;margin-bottom:28px;}
+  .subdate{font-size:clamp(15px,3vw,19px);color:#C9AE8C;margin-bottom:8px;}
+  .date-picker-row{display:flex;align-items:center;gap:10px;margin-bottom:24px;flex-wrap:wrap;}
+  .date-picker-row input[type=date]{background:#2B2117;color:#F2E6D2;border:1.5px solid #4A3B29;border-radius:8px;padding:8px 10px;font-size:14px;font-family:'Inter',sans-serif;}
+  .date-picker-row button{background:#3A2416;color:#E0A73E;border:1.5px solid #4A3B29;border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;font-weight:600;}
   .totals-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;margin-bottom:36px;}
   .totals-card{background:#2B2117;border-radius:16px;padding:22px 20px;border-top:4px solid #E0A73E;}
   .totals-card .qty{font-family:'Fraunces',serif;font-weight:900;font-size:clamp(36px,6vw,48px);color:#E0A73E;line-height:1;}
@@ -40,8 +43,13 @@
     <div class="brand">🌾 Başak Ekmek Fırını</div>
     <div class="sync"><span class="sync-dot"></span><span id="sync-label">canlı</span></div>
   </div>
-  <h1>Yarının Üretimi</h1>
+  <h1 id="main-title">Yarının Üretimi</h1>
   <div class="subdate" id="date-label">—</div>
+  <div class="date-picker-row">
+    <input type="date" id="date-picker" onchange="onDatePick()">
+    <button type="button" onclick="jumpToday()">Bugün</button>
+    <button type="button" onclick="jumpTomorrow()">Yarın</button>
+  </div>
 
   <div id="content">
     <div class="empty">Yükleniyor...</div>
@@ -68,6 +76,9 @@ const db = firebase.firestore();
 let productsCache = [];
 let ordersCache = [];
 
+function getTodayStr(){
+  return new Date().toISOString().slice(0,10);
+}
 function getTomorrowStr(){
   const d = new Date(); d.setDate(d.getDate()+1);
   return d.toISOString().slice(0,10);
@@ -81,14 +92,28 @@ function formatDateLong(d){
 }
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
+function getSelectedDate(){
+  return document.getElementById('date-picker').value || getTomorrowStr();
+}
+function onDatePick(){ render(); }
+function jumpToday(){ document.getElementById('date-picker').value = getTodayStr(); render(); }
+function jumpTomorrow(){ document.getElementById('date-picker').value = getTomorrowStr(); render(); }
+
 function render(){
-  document.getElementById('date-label').textContent = formatDateLong(getTomorrowStr());
+  const selected = getSelectedDate();
+  const today = getTodayStr();
   const tomorrow = getTomorrowStr();
-  const list = ordersCache.filter(o=>o.date===tomorrow);
+  const titleEl = document.getElementById('main-title');
+  if(selected===tomorrow) titleEl.textContent = 'Yarının Üretimi';
+  else if(selected===today) titleEl.textContent = 'Bugünün Üretimi';
+  else titleEl.textContent = 'Üretim Listesi';
+  document.getElementById('date-label').textContent = formatDateLong(selected);
+
+  const list = ordersCache.filter(o=>o.date===selected);
   const content = document.getElementById('content');
 
   if(list.length===0){
-    content.innerHTML = `<div class="empty"><b>🌙</b>Yarın için henüz kayıtlı sipariş yok.</div>`;
+    content.innerHTML = `<div class="empty"><b>🌙</b>Bu tarih için henüz kayıtlı sipariş yok.</div>`;
     return;
   }
 
@@ -116,6 +141,7 @@ function render(){
 }
 
 async function init(){
+  document.getElementById('date-picker').value = getTomorrowStr();
   try{
     await firebase.auth().signInAnonymously();
     db.collection('basak_app').doc('products').onSnapshot(snap=>{
