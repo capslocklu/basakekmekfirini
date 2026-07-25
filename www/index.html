@@ -110,6 +110,8 @@
   .paid-check.is-paid{color:var(--ok);font-weight:600;}
   .badge{font-size:8.5px;padding:1px 5px;border-radius:20px;font-weight:600;}
   .quick-chip{background:var(--wheat-soft);color:#6B4E10;border:none;border-radius:20px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;}
+  .weekday-chip{background:var(--crumb-soft);color:var(--tan);border:1.5px solid var(--input-border);border-radius:20px;padding:6px 13px;font-size:12.5px;font-weight:600;cursor:pointer;}
+  .weekday-chip.active{background:var(--oven);color:#fff;border-color:var(--oven);}
   .bulk-action-bar{background:var(--surface);color:var(--surface-text);border-radius:12px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;box-shadow:var(--shadow);}
   .bulk-action-bar .count{font-size:13px;flex:1;}
   .bulk-action-bar button{border:none;border-radius:8px;padding:7px 12px;font-size:12.5px;font-weight:600;cursor:pointer;}
@@ -378,13 +380,15 @@
     <div class="field" id="order-date-field"><label>Tarih</label><input type="date" id="order-date"></div>
     <label id="repeat-toggle-label" style="display:flex;align-items:center;gap:8px;margin:-6px 0 14px;font-size:13px;color:var(--tan);cursor:pointer;">
       <input type="checkbox" id="repeat-toggle" onchange="onRepeatToggle()" style="width:auto;">
-      Bu siparişi bir tarih aralığında her gün tekrarla
+      Bu siparişi bir tarih aralığında tekrarla
     </label>
     <div id="repeat-range-wrap" style="display:none;margin:-6px 0 14px;">
       <div class="field-row" style="display:flex;gap:8px;">
         <div class="field" style="flex:1;"><label>Başlangıç</label><input type="date" id="repeat-start"></div>
         <div class="field" style="flex:1;"><label>Bitiş</label><input type="date" id="repeat-end"></div>
       </div>
+      <label style="display:block;font-size:12px;font-weight:600;color:var(--tan);margin-bottom:8px;text-transform:uppercase;letter-spacing:.03em;">Hangi Günler</label>
+      <div id="repeat-weekday-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;"></div>
       <div style="font-size:12px;color:var(--tan);" id="repeat-count-preview"></div>
     </div>
     <div class="field"><label>Müşteri Adı</label><input type="text" id="order-customer" list="customer-suggestions" placeholder="Ör: Ayşe Yılmaz"></div>
@@ -830,6 +834,8 @@ function openOrderModal(id, duplicateFrom){
   document.getElementById('repeat-start').value = '';
   document.getElementById('repeat-end').value = '';
   document.getElementById('repeat-count-preview').textContent = '';
+  selectedRepeatWeekdays = new Set([0,1,2,3,4,5,6]);
+  renderRepeatWeekdayChips();
 
   if(id){
     const o = orders.find(x=>x.id===id);
@@ -1011,7 +1017,9 @@ async function saveOrder(){
     const end = document.getElementById('repeat-end').value;
     if(!start || !end){ toast('Başlangıç ve bitiş tarihi seçin'); return; }
     if(end < start){ toast('Bitiş tarihi başlangıçtan önce olamaz'); return; }
-    const dates = getDateRangeArray(start, end);
+    if(selectedRepeatWeekdays.size===0){ toast('En az bir gün seçin'); return; }
+    const dates = getDateRangeArray(start, end).filter(d=>selectedRepeatWeekdays.has(new Date(d+'T00:00:00').getDay()));
+    if(dates.length===0){ toast('Seçilen günler bu aralıkta yok'); return; }
     if(dates.length > 180){ toast('Aralık çok uzun (180 günden az seçin)'); return; }
     dates.forEach(d=>{
       orders.unshift({
@@ -1022,8 +1030,8 @@ async function saveOrder(){
     await saveOrders();
     closeModal('modal-order');
     renderOrders();
-    toast(`${dates.length} günlük sipariş oluşturuldu`);
-    logActivity(`${dates.length} günlük tekrarlayan sipariş oluşturdu: ${customer} (${formatDate(start)} – ${formatDate(end)})`);
+    toast(`${dates.length} sipariş oluşturuldu`);
+    logActivity(`${dates.length} sipariş oluşturdu (tekrarlayan): ${customer} (${formatDate(start)} – ${formatDate(end)})`);
     return;
   }
 
@@ -1058,6 +1066,20 @@ function getDateRangeArray(start, end){
   }
   return dates;
 }
+const REPEAT_WEEKDAY_NAMES = {1:'Pzt',2:'Sal',3:'Çar',4:'Per',5:'Cum',6:'Cmt',0:'Paz'};
+let selectedRepeatWeekdays = new Set([0,1,2,3,4,5,6]); // varsayılan: her gün
+function renderRepeatWeekdayChips(){
+  const wrap = document.getElementById('repeat-weekday-chips');
+  const order = [1,2,3,4,5,6,0];
+  wrap.innerHTML = order.map(wd=>`
+    <button type="button" class="weekday-chip ${selectedRepeatWeekdays.has(wd)?'active':''}" onclick="toggleRepeatWeekday(${wd})">${REPEAT_WEEKDAY_NAMES[wd]}</button>
+  `).join('');
+}
+function toggleRepeatWeekday(wd){
+  if(selectedRepeatWeekdays.has(wd)) selectedRepeatWeekdays.delete(wd); else selectedRepeatWeekdays.add(wd);
+  renderRepeatWeekdayChips();
+  updateRepeatPreview();
+}
 function onRepeatToggle(){
   const on = document.getElementById('repeat-toggle').checked;
   document.getElementById('repeat-range-wrap').style.display = on ? 'block' : 'none';
@@ -1065,6 +1087,8 @@ function onRepeatToggle(){
   if(on){
     const today = document.getElementById('order-date').value || new Date().toISOString().slice(0,10);
     document.getElementById('repeat-start').value = today;
+    selectedRepeatWeekdays = new Set([0,1,2,3,4,5,6]);
+    renderRepeatWeekdayChips();
   }
   updateRepeatPreview();
 }
@@ -1072,9 +1096,9 @@ function updateRepeatPreview(){
   const start = document.getElementById('repeat-start').value;
   const end = document.getElementById('repeat-end').value;
   const preview = document.getElementById('repeat-count-preview');
-  if(start && end && end >= start){
-    const count = getDateRangeArray(start, end).length;
-    preview.textContent = `${count} gün için ayrı ayrı sipariş oluşturulacak`;
+  if(start && end && end >= start && selectedRepeatWeekdays.size>0){
+    const count = getDateRangeArray(start, end).filter(d=>selectedRepeatWeekdays.has(new Date(d+'T00:00:00').getDay())).length;
+    preview.textContent = `${count} sipariş oluşturulacak`;
   } else {
     preview.textContent = '';
   }
