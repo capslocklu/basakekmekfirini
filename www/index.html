@@ -286,6 +286,10 @@
       <div id="report-totals"></div>
       <label style="display:block;font-size:12px;font-weight:600;color:var(--tan);margin:16px 0 8px;text-transform:uppercase;letter-spacing:.03em;">Ürün Bazında Adet</label>
       <div id="report-products"></div>
+      <div id="report-daily-section" style="display:none;">
+        <label style="display:block;font-size:12px;font-weight:600;color:var(--tan);margin:20px 0 8px;text-transform:uppercase;letter-spacing:.03em;">Güne Göre Dağılım</label>
+        <div id="report-daily-breakdown"></div>
+      </div>
       <div style="display:flex;gap:8px;margin-top:16px;">
         <button class="btn btn-ghost" style="flex:1;" onclick="exportReportCSV()">Excel'e Aktar (CSV)</button>
         <button class="btn btn-ghost" style="flex:1;" onclick="printReport()">Yazdır</button>
@@ -357,7 +361,18 @@
   <div class="modal-sheet">
     <div class="modal-head"><h3 id="order-modal-title">Yeni Sipariş</h3><button class="close-x" onclick="closeModal('modal-order')">✕</button></div>
     <input type="hidden" id="order-edit-id">
-    <div class="field"><label>Tarih</label><input type="date" id="order-date"></div>
+    <div class="field" id="order-date-field"><label>Tarih</label><input type="date" id="order-date"></div>
+    <label id="repeat-toggle-label" style="display:flex;align-items:center;gap:8px;margin:-6px 0 14px;font-size:13px;color:var(--tan);cursor:pointer;">
+      <input type="checkbox" id="repeat-toggle" onchange="onRepeatToggle()" style="width:auto;">
+      Bu siparişi bir tarih aralığında her gün tekrarla
+    </label>
+    <div id="repeat-range-wrap" style="display:none;margin:-6px 0 14px;">
+      <div class="field-row" style="display:flex;gap:8px;">
+        <div class="field" style="flex:1;"><label>Başlangıç</label><input type="date" id="repeat-start"></div>
+        <div class="field" style="flex:1;"><label>Bitiş</label><input type="date" id="repeat-end"></div>
+      </div>
+      <div style="font-size:12px;color:var(--tan);" id="repeat-count-preview"></div>
+    </div>
     <div class="field"><label>Müşteri Adı</label><input type="text" id="order-customer" list="customer-suggestions" placeholder="Ör: Ayşe Yılmaz"></div>
     <datalist id="customer-suggestions"></datalist>
     <div id="quick-products" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;"></div>
@@ -795,6 +810,13 @@ function openOrderModal(id, duplicateFrom){
     }).join('');
   } else { quickWrap.innerHTML=''; }
 
+  document.getElementById('repeat-toggle').checked = false;
+  document.getElementById('repeat-range-wrap').style.display = 'none';
+  document.getElementById('order-date-field').style.display = 'block';
+  document.getElementById('repeat-start').value = '';
+  document.getElementById('repeat-end').value = '';
+  document.getElementById('repeat-count-preview').textContent = '';
+
   if(id){
     const o = orders.find(x=>x.id===id);
     if(!o){ toast('Sipariş bulunamadı'); return; }
@@ -804,6 +826,7 @@ function openOrderModal(id, duplicateFrom){
     document.getElementById('order-customer').value = o.customer;
     document.getElementById('order-address').value = o.address||'';
     document.getElementById('order-note').value = o.note||'';
+    document.getElementById('repeat-toggle-label').style.display = 'none';
     o.items.forEach(it=>addOrderItemRow(it.productId, it.qty));
   } else if(duplicateFrom){
     document.getElementById('order-modal-title').textContent = duplicateFrom.__fromTemplate ? 'Tekrarlanan Sipariş' : 'Yeni Sipariş (Kopya)';
@@ -812,6 +835,7 @@ function openOrderModal(id, duplicateFrom){
     document.getElementById('order-customer').value = duplicateFrom.customer;
     document.getElementById('order-address').value = duplicateFrom.address||'';
     document.getElementById('order-note').value = duplicateFrom.note||'';
+    document.getElementById('repeat-toggle-label').style.display = 'flex';
     duplicateFrom.items.forEach(it=>addOrderItemRow(it.productId, it.qty));
   } else {
     document.getElementById('order-modal-title').textContent = 'Yeni Sipariş';
@@ -820,6 +844,7 @@ function openOrderModal(id, duplicateFrom){
     document.getElementById('order-customer').value='';
     document.getElementById('order-address').value='';
     document.getElementById('order-note').value='';
+    document.getElementById('repeat-toggle-label').style.display = 'flex';
     addOrderItemRow();
   }
   document.getElementById('modal-order').classList.add('active');
@@ -955,7 +980,9 @@ async function saveOrder(){
   const customer = document.getElementById('order-customer').value.trim();
   const address = document.getElementById('order-address').value.trim();
   const note = document.getElementById('order-note').value.trim();
-  if(!date || !customer){ toast('Tarih ve müşteri adı zorunludur'); return; }
+  const repeatOn = document.getElementById('repeat-toggle').checked && !editId;
+  if(!customer){ toast('Müşteri adı zorunludur'); return; }
+  if(!repeatOn && !date){ toast('Tarih zorunludur'); return; }
   const rows = [...document.querySelectorAll('#order-items-wrap .item-row')];
   const items = rows.map(r=>{
     const pid = r.querySelector('.item-product').value;
@@ -964,6 +991,28 @@ async function saveOrder(){
     return prod ? {productId:pid, name:prod.name, qty, price:prod.price||0} : null;
   }).filter(Boolean);
   if(items.length===0){ toast('En az bir ürün seçin'); return; }
+
+  if(repeatOn){
+    const start = document.getElementById('repeat-start').value;
+    const end = document.getElementById('repeat-end').value;
+    if(!start || !end){ toast('Başlangıç ve bitiş tarihi seçin'); return; }
+    if(end < start){ toast('Bitiş tarihi başlangıçtan önce olamaz'); return; }
+    const dates = getDateRangeArray(start, end);
+    if(dates.length > 180){ toast('Aralık çok uzun (180 günden az seçin)'); return; }
+    dates.forEach(d=>{
+      orders.unshift({
+        id: 'o_'+Date.now()+'_'+d, date:d, customer, address, note, items,
+        status:'yeni', paid:false, createdBy: session.username, createdAt: Date.now()
+      });
+    });
+    await saveOrders();
+    closeModal('modal-order');
+    renderOrders();
+    toast(`${dates.length} günlük sipariş oluşturuldu`);
+    logActivity(`${dates.length} günlük tekrarlayan sipariş oluşturdu: ${customer} (${formatDate(start)} – ${formatDate(end)})`);
+    return;
+  }
+
   if(editId){
     const o = orders.find(x=>x.id===editId);
     if(o){ Object.assign(o, {date, customer, address, note, items}); }
@@ -985,6 +1034,40 @@ async function saveOrder(){
   toast('Sipariş kaydedildi');
   logActivity(`Yeni sipariş ekledi: ${customer}`);
 }
+function getDateRangeArray(start, end){
+  const dates = [];
+  let cur = new Date(start+'T00:00:00');
+  const last = new Date(end+'T00:00:00');
+  while(cur <= last){
+    dates.push(cur.toISOString().slice(0,10));
+    cur.setDate(cur.getDate()+1);
+  }
+  return dates;
+}
+function onRepeatToggle(){
+  const on = document.getElementById('repeat-toggle').checked;
+  document.getElementById('repeat-range-wrap').style.display = on ? 'block' : 'none';
+  document.getElementById('order-date-field').style.display = on ? 'none' : 'block';
+  if(on){
+    const today = document.getElementById('order-date').value || new Date().toISOString().slice(0,10);
+    document.getElementById('repeat-start').value = today;
+  }
+  updateRepeatPreview();
+}
+function updateRepeatPreview(){
+  const start = document.getElementById('repeat-start').value;
+  const end = document.getElementById('repeat-end').value;
+  const preview = document.getElementById('repeat-count-preview');
+  if(start && end && end >= start){
+    const count = getDateRangeArray(start, end).length;
+    preview.textContent = `${count} gün için ayrı ayrı sipariş oluşturulacak`;
+  } else {
+    preview.textContent = '';
+  }
+}
+document.addEventListener('input', function(e){
+  if(e.target && (e.target.id==='repeat-start' || e.target.id==='repeat-end')) updateRepeatPreview();
+});
 async function toggleOrderStatus(id){
   const o = orders.find(x=>x.id===id); if(!o) return;
   o.status = o.status==='yeni' ? 'hazir' : 'yeni';
@@ -1409,6 +1492,27 @@ function renderReport(){
   prodEl.innerHTML = rows.length ? rows.map(([name,qty])=>`
     <div class="list-item"><div class="info"><b>${escapeHtml(name)}</b></div><div style="font-weight:700;color:var(--crust);">×${qty}</div></div>`).join('')
     : '<div class="empty">Bu dönemde sipariş yok.</div>';
+
+  const dailySection = document.getElementById('report-daily-section');
+  const byDate = {};
+  list.forEach(o=>{ (byDate[o.date] = byDate[o.date]||[]).push(o); });
+  const distinctDates = Object.keys(byDate).sort();
+  if(distinctDates.length > 1){
+    dailySection.style.display = 'block';
+    document.getElementById('report-daily-breakdown').innerHTML = distinctDates.map(d=>{
+      const dayList = byDate[d];
+      const dayTotals = {};
+      dayList.forEach(o=>o.items.forEach(it=>{ dayTotals[it.name]=(dayTotals[it.name]||0)+it.qty; }));
+      const tagsHtml = Object.entries(dayTotals).sort((a,b)=>b[1]-a[1]).map(([n,q])=>`<span class="summary-tag">${escapeHtml(n)} <b>×${q}</b></span>`).join('');
+      return `<div class="summary-box" style="display:block;margin-bottom:8px;">
+        <div class="summary-title" style="margin-bottom:6px;">${formatDate(d)} · ${dayList.length} sipariş</div>
+        <div class="summary-tags" style="justify-content:flex-start;">${tagsHtml}</div>
+      </div>`;
+    }).join('');
+  } else {
+    dailySection.style.display = 'none';
+    document.getElementById('report-daily-breakdown').innerHTML = '';
+  }
 }
 function exportReportCSV(){
   const list = getReportRangeOrders();
