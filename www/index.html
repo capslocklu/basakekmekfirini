@@ -110,6 +110,12 @@
   .paid-check.is-paid{color:var(--ok);font-weight:600;}
   .badge{font-size:8.5px;padding:1px 5px;border-radius:20px;font-weight:600;}
   .quick-chip{background:var(--wheat-soft);color:#6B4E10;border:none;border-radius:20px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;}
+  .bulk-action-bar{background:var(--surface);color:var(--surface-text);border-radius:12px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;box-shadow:var(--shadow);}
+  .bulk-action-bar .count{font-size:13px;flex:1;}
+  .bulk-action-bar button{border:none;border-radius:8px;padding:7px 12px;font-size:12.5px;font-weight:600;cursor:pointer;}
+  .bulk-action-bar .btn-select-all{background:rgba(255,255,255,.15);color:#fff;}
+  .bulk-action-bar .btn-delete-sel{background:var(--danger);color:#fff;}
+  .ticket-select-check{width:17px;height:17px;margin-right:8px;flex:none;accent-color:var(--oven);}
   .reminder-banner{background:var(--oven);color:#fff;border-radius:12px;padding:12px 14px;margin-bottom:12px;display:flex;align-items:flex-start;gap:10px;box-shadow:var(--shadow);}
   .reminder-banner .txt{flex:1;font-size:13px;line-height:1.4;}
   .reminder-banner .txt b{display:block;font-size:13.5px;margin-bottom:2px;}
@@ -229,6 +235,12 @@
       </div>
       <div class="filter-row" style="position:relative;">
         <input type="text" id="filter-search" placeholder="Müşteri ara..." oninput="renderOrders()" style="flex:1.3;">
+        <button type="button" class="btn btn-ghost btn-sm" style="flex:1;text-align:left;position:relative;padding-left:10px;" onclick="toggleCustomerFilterPanel()">
+          <span id="customer-filter-label">Tüm Müşteriler</span> ▾
+        </button>
+        <div id="customer-filter-panel" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--white);border-radius:10px;box-shadow:var(--shadow);padding:10px;z-index:31;max-height:240px;overflow-y:auto;margin-top:4px;"></div>
+      </div>
+      <div class="filter-row" style="position:relative;">
         <button type="button" class="btn btn-ghost btn-sm" style="flex:1;text-align:left;position:relative;padding-left:10px;" onclick="toggleProductFilterPanel()">
           <span id="product-filter-label">Tüm Ürünler</span> ▾
         </button>
@@ -241,7 +253,9 @@
           <option value="created-desc">En Yeni Sipariş</option>
           <option value="created-asc">En Eski Sipariş</option>
         </select>
+        <button type="button" class="btn btn-ghost btn-sm" id="bulk-toggle-btn" style="flex:none;" onclick="toggleBulkMode()">Toplu Seç</button>
       </div>
+      <div id="bulk-action-bar" style="display:none;"></div>
       <div id="tomorrow-reminder"></div>
       <div id="orders-summary"></div>
       <div id="orders-list"></div>
@@ -1185,6 +1199,53 @@ document.addEventListener('click', function(e){
   if(!insidePanel && !isToggleBtn) panel.style.display='none';
 });
 
+let selectedCustomerFilters = new Set();
+function toggleCustomerFilterPanel(){
+  const panel = document.getElementById('customer-filter-panel');
+  const isOpen = panel.style.display==='block';
+  panel.style.display = isOpen ? 'none' : 'block';
+  if(!isOpen) renderCustomerFilterPanel();
+}
+function renderCustomerFilterPanel(){
+  const panel = document.getElementById('customer-filter-panel');
+  const canViewAll = session.role==='admin' || session.permissions.order_viewall;
+  const visibleOrders = orders.filter(o => canViewAll || o.createdBy===session.username);
+  const names = [...new Set(visibleOrders.map(o=>o.customer))].sort((a,b)=>a.localeCompare(b,'tr'));
+  if(names.length===0){ panel.innerHTML = '<div class="empty" style="padding:10px;">Müşteri yok</div>'; return; }
+  panel.innerHTML = names.map(name=>`
+    <label style="display:flex;align-items:center;gap:8px;padding:7px 4px;font-size:13.5px;color:var(--crust-dark);cursor:pointer;">
+      <input type="checkbox" value="${escapeHtml(name)}" ${selectedCustomerFilters.has(name)?'checked':''} onchange="toggleCustomerFilterChoice('${encodeURIComponent(name)}')" style="width:auto;">
+      ${escapeHtml(name)}
+    </label>`).join('') +
+    (selectedCustomerFilters.size ? `<button type="button" class="btn btn-ghost btn-sm" style="width:100%;margin-top:6px;" onclick="clearCustomerFilters()">Temizle</button>` : '');
+}
+function toggleCustomerFilterChoice(encodedName){
+  const name = decodeURIComponent(encodedName);
+  if(selectedCustomerFilters.has(name)) selectedCustomerFilters.delete(name); else selectedCustomerFilters.add(name);
+  updateCustomerFilterLabel();
+  renderOrders();
+}
+function clearCustomerFilters(){
+  selectedCustomerFilters.clear();
+  document.getElementById('customer-filter-panel').style.display='none';
+  updateCustomerFilterLabel();
+  renderOrders();
+}
+function updateCustomerFilterLabel(){
+  const label = document.getElementById('customer-filter-label');
+  if(selectedCustomerFilters.size===0){ label.textContent = 'Tüm Müşteriler'; return; }
+  if(selectedCustomerFilters.size===1){ label.textContent = [...selectedCustomerFilters][0]; return; }
+  label.textContent = selectedCustomerFilters.size + ' müşteri seçili';
+}
+document.addEventListener('click', function(e){
+  const panel = document.getElementById('customer-filter-panel');
+  if(!panel) return;
+  const btn = e.target.closest('button');
+  const insidePanel = e.target.closest('#customer-filter-panel');
+  const isToggleBtn = btn && btn.getAttribute('onclick')==='toggleCustomerFilterPanel()';
+  if(!insidePanel && !isToggleBtn) panel.style.display='none';
+});
+
 function renderOrders(){
   const dateStart = document.getElementById('filter-date-start').value;
   const dateEnd = document.getElementById('filter-date-end').value;
@@ -1195,6 +1256,7 @@ function renderOrders(){
   if(dateStart) list = list.filter(o=>o.date>=dateStart);
   if(dateEnd) list = list.filter(o=>o.date<=dateEnd);
   if(search) list = list.filter(o=>o.customer.toLowerCase().includes(search));
+  if(selectedCustomerFilters.size) list = list.filter(o=>selectedCustomerFilters.has(o.customer));
   if(selectedProductFilters.size) list = list.filter(o=>o.items.some(it=>selectedProductFilters.has(it.productId)));
   list = list.slice().sort((a,b)=>{
     if(sortOrder==='date-asc') return a.date.localeCompare(b.date) || a.createdAt-b.createdAt;
@@ -1228,7 +1290,8 @@ function renderOrders(){
   wrap.innerHTML = list.map(o=>`
     <div class="ticket">
       <div class="ticket-row">
-        <div class="ticket-customer" style="cursor:pointer;text-decoration:underline dotted;" onclick="openCustomerHistory('${encodeURIComponent(o.customer)}')">${escapeHtml(o.customer)}</div>
+        ${bulkMode?`<input type="checkbox" class="ticket-select-check" ${selectedOrderIds.has(o.id)?'checked':''} onchange="toggleOrderSelect('${o.id}')">`:''}
+        <div class="ticket-customer" style="cursor:pointer;text-decoration:underline dotted;" onclick="${bulkMode?`toggleOrderSelect('${o.id}')`:`openCustomerHistory('${encodeURIComponent(o.customer)}')`}">${escapeHtml(o.customer)}</div>
         <div class="ticket-items">${o.items.map(it=>`${escapeHtml(it.name)} <b>×${it.qty}</b>`).join(', ')}</div>
         <div class="ticket-date">${formatDate(o.date)}</div>
       </div>
@@ -1243,9 +1306,61 @@ function renderOrders(){
         </div>
       </div>
     </div>`).join('');
+
+  renderBulkActionBar(list);
 }
 
-/* ---------- PRODUCTS ---------- */
+/* ---------- BULK SELECT / DELETE ---------- */
+let bulkMode = false;
+let selectedOrderIds = new Set();
+function toggleBulkMode(){
+  bulkMode = !bulkMode;
+  selectedOrderIds.clear();
+  document.getElementById('bulk-toggle-btn').textContent = bulkMode ? 'Toplu Seçimi Kapat' : 'Toplu Seç';
+  renderOrders();
+}
+function toggleOrderSelect(id){
+  if(selectedOrderIds.has(id)) selectedOrderIds.delete(id); else selectedOrderIds.add(id);
+  renderOrders();
+}
+function renderBulkActionBar(currentList){
+  const bar = document.getElementById('bulk-action-bar');
+  if(!bulkMode){ bar.style.display='none'; bar.innerHTML=''; return; }
+  bar.style.display='block';
+  const allSelected = currentList.length>0 && currentList.every(o=>selectedOrderIds.has(o.id));
+  bar.innerHTML = `<div class="bulk-action-bar">
+    <span class="count">${selectedOrderIds.size} sipariş seçili</span>
+    <button type="button" class="btn-select-all" onclick="selectAllVisible()">${allSelected?'Seçimi Kaldır':'Tümünü Seç'}</button>
+    <button type="button" class="btn-delete-sel" onclick="deleteSelectedOrders()">Seçilenleri Sil</button>
+  </div>`;
+}
+function selectAllVisible(){
+  const dateStart = document.getElementById('filter-date-start').value;
+  const dateEnd = document.getElementById('filter-date-end').value;
+  const search = document.getElementById('filter-search').value.trim().toLowerCase();
+  const canViewAll = session.role==='admin' || session.permissions.order_viewall;
+  let list = orders.filter(o => canViewAll || o.createdBy===session.username);
+  if(dateStart) list = list.filter(o=>o.date>=dateStart);
+  if(dateEnd) list = list.filter(o=>o.date<=dateEnd);
+  if(search) list = list.filter(o=>o.customer.toLowerCase().includes(search));
+  if(selectedCustomerFilters.size) list = list.filter(o=>selectedCustomerFilters.has(o.customer));
+  if(selectedProductFilters.size) list = list.filter(o=>o.items.some(it=>selectedProductFilters.has(it.productId)));
+  const allSelected = list.length>0 && list.every(o=>selectedOrderIds.has(o.id));
+  if(allSelected){ list.forEach(o=>selectedOrderIds.delete(o.id)); }
+  else{ list.forEach(o=>selectedOrderIds.add(o.id)); }
+  renderOrders();
+}
+async function deleteSelectedOrders(){
+  if(selectedOrderIds.size===0){ toast('Hiç sipariş seçilmedi'); return; }
+  if(!confirm(`${selectedOrderIds.size} sipariş kalıcı olarak silinecek. Emin misiniz?`)) return;
+  const count = selectedOrderIds.size;
+  orders = orders.filter(o=>!selectedOrderIds.has(o.id));
+  selectedOrderIds.clear();
+  await saveOrders();
+  renderOrders();
+  toast(`${count} sipariş silindi`);
+  logActivity(`Toplu silme: ${count} sipariş silindi`);
+}
 function openProductModal(id){
   const canEdit = session.role==='admin' || session.permissions.products;
   if(!canEdit){ toast('Bu işlem için yetkiniz yok'); return; }
