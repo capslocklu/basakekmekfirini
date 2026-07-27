@@ -257,6 +257,9 @@
         </select>
         <button type="button" class="btn btn-ghost btn-sm" id="bulk-toggle-btn" style="flex:none;" onclick="toggleBulkMode()">Toplu Seç</button>
       </div>
+      <div class="filter-row" style="justify-content:flex-end;">
+        <a href="#" id="show-hidden-link" onclick="toggleShowHidden();return false;" style="font-size:12px;color:var(--tan);text-decoration:underline;">Gizlenenleri göster</a>
+      </div>
       <div id="bulk-action-bar" style="display:none;"></div>
       <div id="tomorrow-reminder"></div>
       <div id="orders-summary"></div>
@@ -399,6 +402,10 @@
     <button class="add-item-btn" onclick="addOrderItemRow()">+ Ürün Ekle</button>
     <div class="field"><label>Adres</label><textarea id="order-address" placeholder="Teslimat adresi"></textarea></div>
     <div class="field"><label>Not</label><textarea id="order-note" placeholder="Sipariş ile ilgili not (opsiyonel)"></textarea></div>
+    <label style="display:flex;align-items:center;gap:8px;margin:-6px 0 16px;font-size:14px;color:var(--crust-dark);cursor:pointer;">
+      <input type="checkbox" id="order-paid" style="width:auto;">
+      Ödeme alındı
+    </label>
     <button class="btn btn-primary" onclick="saveOrder()">Siparişi Kaydet</button>
   </div>
 </div>
@@ -846,6 +853,7 @@ function openOrderModal(id, duplicateFrom){
     document.getElementById('order-customer').value = o.customer;
     document.getElementById('order-address').value = o.address||'';
     document.getElementById('order-note').value = o.note||'';
+    document.getElementById('order-paid').checked = !!o.paid;
     document.getElementById('repeat-toggle-label').style.display = 'none';
     o.items.forEach(it=>addOrderItemRow(it.productId, it.qty));
   } else if(duplicateFrom){
@@ -855,6 +863,7 @@ function openOrderModal(id, duplicateFrom){
     document.getElementById('order-customer').value = duplicateFrom.customer;
     document.getElementById('order-address').value = duplicateFrom.address||'';
     document.getElementById('order-note').value = duplicateFrom.note||'';
+    document.getElementById('order-paid').checked = false;
     document.getElementById('repeat-toggle-label').style.display = 'flex';
     duplicateFrom.items.forEach(it=>addOrderItemRow(it.productId, it.qty));
   } else {
@@ -864,6 +873,7 @@ function openOrderModal(id, duplicateFrom){
     document.getElementById('order-customer').value='';
     document.getElementById('order-address').value='';
     document.getElementById('order-note').value='';
+    document.getElementById('order-paid').checked = false;
     document.getElementById('repeat-toggle-label').style.display = 'flex';
     addOrderItemRow();
   }
@@ -1000,6 +1010,7 @@ async function saveOrder(){
   const customer = document.getElementById('order-customer').value.trim();
   const address = document.getElementById('order-address').value.trim();
   const note = document.getElementById('order-note').value.trim();
+  const paid = document.getElementById('order-paid').checked;
   const repeatOn = document.getElementById('repeat-toggle').checked && !editId;
   if(!customer){ toast('Müşteri adı zorunludur'); return; }
   if(!repeatOn && !date){ toast('Tarih zorunludur'); return; }
@@ -1024,7 +1035,7 @@ async function saveOrder(){
     dates.forEach(d=>{
       orders.unshift({
         id: 'o_'+Date.now()+'_'+d, date:d, customer, address, note, items,
-        status:'yeni', paid:false, createdBy: session.username, createdAt: Date.now()
+        status:'yeni', paid, createdBy: session.username, createdAt: Date.now()
       });
     });
     await saveOrders();
@@ -1037,7 +1048,7 @@ async function saveOrder(){
 
   if(editId){
     const o = orders.find(x=>x.id===editId);
-    if(o){ Object.assign(o, {date, customer, address, note, items}); }
+    if(o){ Object.assign(o, {date, customer, address, note, items, paid}); }
     await saveOrders();
     closeModal('modal-order');
     renderOrders();
@@ -1047,7 +1058,7 @@ async function saveOrder(){
   }
   const newOrder = {
     id: 'o_'+Date.now(), date, customer, address, note, items,
-    status:'yeni', paid:false, createdBy: session.username, createdAt: Date.now()
+    status:'yeni', paid, createdBy: session.username, createdAt: Date.now()
   };
   orders.unshift(newOrder);
   await saveOrders();
@@ -1270,6 +1281,19 @@ document.addEventListener('click', function(e){
   if(!insidePanel && !isToggleBtn) panel.style.display='none';
 });
 
+let showHidden = false;
+function toggleShowHidden(){
+  showHidden = !showHidden;
+  document.getElementById('show-hidden-link').textContent = showHidden ? 'Gizlenenleri gizle' : 'Gizlenenleri göster';
+  renderOrders();
+}
+function toggleOrderHidden(id){
+  const o = orders.find(x=>x.id===id); if(!o) return;
+  o.hidden = !o.hidden;
+  saveOrders();
+  renderOrders();
+  logActivity(`Siparişi ${o.hidden?'gizledi':'tekrar gösterdi'}: ${o.customer}`);
+}
 function renderOrders(){
   const dateStart = document.getElementById('filter-date-start').value;
   const dateEnd = document.getElementById('filter-date-end').value;
@@ -1282,6 +1306,9 @@ function renderOrders(){
   if(search) list = list.filter(o=>o.customer.toLowerCase().includes(search));
   if(selectedCustomerFilters.size) list = list.filter(o=>selectedCustomerFilters.has(o.customer));
   if(selectedProductFilters.size) list = list.filter(o=>o.items.some(it=>selectedProductFilters.has(it.productId)));
+  const hiddenCount = list.filter(o=>o.hidden).length;
+  document.getElementById('show-hidden-link').textContent = (showHidden ? 'Gizlenenleri gizle' : 'Gizlenenleri göster') + (hiddenCount ? ` (${hiddenCount})` : '');
+  if(!showHidden) list = list.filter(o=>!o.hidden);
   list = list.slice().sort((a,b)=>{
     if(sortOrder==='date-asc') return a.date.localeCompare(b.date) || a.createdAt-b.createdAt;
     if(sortOrder==='date-desc') return b.date.localeCompare(a.date) || b.createdAt-a.createdAt;
@@ -1312,10 +1339,10 @@ function renderOrders(){
     return;
   }
   wrap.innerHTML = list.map(o=>`
-    <div class="ticket">
+    <div class="ticket" style="${o.hidden?'opacity:.55;':''}">
       <div class="ticket-row">
         ${bulkMode?`<input type="checkbox" class="ticket-select-check" ${selectedOrderIds.has(o.id)?'checked':''} onchange="toggleOrderSelect('${o.id}')">`:''}
-        <div class="ticket-customer" style="cursor:pointer;text-decoration:underline dotted;" onclick="${bulkMode?`toggleOrderSelect('${o.id}')`:`openCustomerHistory('${encodeURIComponent(o.customer)}')`}">${escapeHtml(o.customer)}</div>
+        <div class="ticket-customer" style="cursor:pointer;text-decoration:underline dotted;" onclick="${bulkMode?`toggleOrderSelect('${o.id}')`:`openCustomerHistory('${encodeURIComponent(o.customer)}')`}">${escapeHtml(o.customer)}${o.hidden?' <span class="badge" style="background:var(--crumb-soft);color:var(--tan);">Gizli</span>':''}</div>
         <div class="ticket-items">${o.items.map(it=>`${escapeHtml(it.name)} <b>×${it.qty}</b>`).join(', ')}</div>
         <div class="ticket-date">${formatDate(o.date)}</div>
       </div>
@@ -1324,6 +1351,7 @@ function renderOrders(){
         <div class="ticket-address">${o.address?escapeHtml(o.address):'—'}</div>
         <label class="paid-check ${o.paid?'is-paid':''}"><input type="checkbox" ${o.paid?'checked':''} onchange="togglePaid('${o.id}')"> ${o.paid?'Ödeme alındı':'Ödeme bekliyor'}</label>
         <div style="display:flex;gap:4px;flex:none;">
+          <button class="icon-btn" onclick="toggleOrderHidden('${o.id}')" title="${o.hidden?'Göster':'Gizle'}">${o.hidden?'👁️':'🙈'}</button>
           <button class="icon-btn" onclick="duplicateOrder('${o.id}')" title="Kopyala">⧉</button>
           <button class="icon-btn" onclick="openOrderModal('${o.id}')">✎</button>
           <button class="icon-btn danger" onclick="deleteOrder('${o.id}')">🗑</button>
@@ -1355,8 +1383,19 @@ function renderBulkActionBar(currentList){
   bar.innerHTML = `<div class="bulk-action-bar">
     <span class="count">${selectedOrderIds.size} sipariş seçili</span>
     <button type="button" class="btn-select-all" onclick="selectAllVisible()">${allSelected?'Seçimi Kaldır':'Tümünü Seç'}</button>
+    <button type="button" class="btn-select-all" onclick="hideSelectedOrders()">${showHidden?'Gizle/Göster':'Seçilenleri Gizle'}</button>
     <button type="button" class="btn-delete-sel" onclick="deleteSelectedOrders()">Seçilenleri Sil</button>
   </div>`;
+}
+async function hideSelectedOrders(){
+  if(selectedOrderIds.size===0){ toast('Hiç sipariş seçilmedi'); return; }
+  const count = selectedOrderIds.size;
+  orders.forEach(o=>{ if(selectedOrderIds.has(o.id)) o.hidden = !o.hidden; });
+  selectedOrderIds.clear();
+  await saveOrders();
+  renderOrders();
+  toast(`${count} sipariş güncellendi`);
+  logActivity(`Toplu gizle/göster: ${count} sipariş`);
 }
 function selectAllVisible(){
   const dateStart = document.getElementById('filter-date-start').value;
@@ -1369,6 +1408,7 @@ function selectAllVisible(){
   if(search) list = list.filter(o=>o.customer.toLowerCase().includes(search));
   if(selectedCustomerFilters.size) list = list.filter(o=>selectedCustomerFilters.has(o.customer));
   if(selectedProductFilters.size) list = list.filter(o=>o.items.some(it=>selectedProductFilters.has(it.productId)));
+  if(!showHidden) list = list.filter(o=>!o.hidden);
   const allSelected = list.length>0 && list.every(o=>selectedOrderIds.has(o.id));
   if(allSelected){ list.forEach(o=>selectedOrderIds.delete(o.id)); }
   else{ list.forEach(o=>selectedOrderIds.add(o.id)); }
