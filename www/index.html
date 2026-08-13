@@ -260,6 +260,10 @@
       <div class="filter-row" style="justify-content:flex-end;">
         <a href="#" id="show-hidden-link" onclick="toggleShowHidden();return false;" style="font-size:12px;color:var(--tan);text-decoration:underline;">Gizlenenleri göster</a>
       </div>
+      <button type="button" class="btn btn-primary" style="width:100%;margin-bottom:12px;background:#25D366;box-shadow:0 3px 0 #1DA851;display:flex;align-items:center;justify-content:center;gap:8px;" onclick="shareOrdersWhatsApp()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38a9.9 9.9 0 0 0 4.74 1.21h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2m0 1.67a8.2 8.2 0 0 1 5.83 2.42 8.19 8.19 0 0 1 2.41 5.82c0 4.55-3.7 8.24-8.25 8.24a8.2 8.2 0 0 1-4.19-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.18 8.18 0 0 1-1.26-4.38c0-4.55 3.7-8.24 8.25-8.24M8.53 6.74c-.16 0-.42.06-.64.3-.22.24-.85.83-.85 2.03s.87 2.36.99 2.52c.12.16 1.7 2.7 4.18 3.68 2.06.82 2.48.66 2.93.62.45-.04 1.45-.6 1.65-1.17.2-.58.2-1.08.14-1.18-.06-.1-.22-.16-.46-.28-.24-.12-1.45-.72-1.68-.8-.22-.08-.39-.12-.55.13-.16.24-.63.8-.78.96-.14.16-.28.18-.53.06-.24-.12-1.02-.38-1.94-1.2-.72-.64-1.2-1.43-1.35-1.67-.14-.24-.02-.37.11-.5.11-.11.24-.28.36-.42.12-.14.16-.24.24-.4.08-.16.04-.3-.02-.42-.06-.12-.55-1.36-.76-1.86-.2-.48-.4-.42-.55-.42h-.4"/></svg>
+        Günün Listesini WhatsApp'ta Paylaş
+      </button>
       <div id="bulk-action-bar" style="display:none;"></div>
       <div id="tomorrow-reminder"></div>
       <div id="orders-summary"></div>
@@ -1286,6 +1290,53 @@ function toggleShowHidden(){
   showHidden = !showHidden;
   document.getElementById('show-hidden-link').textContent = showHidden ? 'Gizlenenleri gizle' : 'Gizlenenleri göster';
   renderOrders();
+}
+function getCurrentlyFilteredOrders(){
+  const dateStart = document.getElementById('filter-date-start').value;
+  const dateEnd = document.getElementById('filter-date-end').value;
+  const search = document.getElementById('filter-search').value.trim().toLowerCase();
+  const canViewAll = session.role==='admin' || session.permissions.order_viewall;
+  let list = orders.filter(o => canViewAll || o.createdBy===session.username);
+  if(dateStart) list = list.filter(o=>o.date>=dateStart);
+  if(dateEnd) list = list.filter(o=>o.date<=dateEnd);
+  if(search) list = list.filter(o=>o.customer.toLowerCase().includes(search));
+  if(selectedCustomerFilters.size) list = list.filter(o=>selectedCustomerFilters.has(o.customer));
+  if(selectedProductFilters.size) list = list.filter(o=>o.items.some(it=>selectedProductFilters.has(it.productId)));
+  return list.slice().sort((a,b)=>a.date.localeCompare(b.date) || a.customer.localeCompare(b.customer,'tr'));
+}
+function shareOrdersWhatsApp(){
+  const list = getCurrentlyFilteredOrders();
+  if(list.length===0){ toast('Paylaşılacak sipariş yok'); return; }
+
+  const dateStart = document.getElementById('filter-date-start').value;
+  const dateEnd = document.getElementById('filter-date-end').value;
+  let headerDate;
+  if(dateStart && dateEnd && dateStart===dateEnd) headerDate = formatDate(dateStart);
+  else if(dateStart && dateEnd) headerDate = `${formatDate(dateStart)} – ${formatDate(dateEnd)}`;
+  else if(dateStart) headerDate = formatDate(dateStart) + ' ve sonrası';
+  else if(dateEnd) headerDate = formatDate(dateEnd) + ' ve öncesi';
+  else headerDate = 'Tüm Tarihler';
+
+  let text = `*🌾 Başak Ekmek Fırını*\n📅 ${headerDate} — Sipariş Listesi\n\n`;
+  const multiDay = new Set(list.map(o=>o.date)).size > 1;
+  list.forEach((o,i)=>{
+    const itemsStr = o.items.map(it=>`${it.name} x${it.qty}`).join(', ');
+    text += `${i+1}. *${o.customer}* — ${itemsStr}`;
+    if(multiDay) text += ` [${formatDate(o.date)}]`;
+    if(o.address) text += `\n   📍 ${o.address}`;
+    text += o.paid ? `\n   ✅ Ödendi` : `\n   ⏳ Ödeme bekliyor`;
+    text += '\n\n';
+  });
+
+  const totals = {};
+  list.forEach(o=>o.items.forEach(it=>{ totals[it.name] = (totals[it.name]||0) + it.qty; }));
+  text += `—\n*Toplam: ${list.length} sipariş*\n`;
+  Object.entries(totals).sort((a,b)=>b[1]-a[1]).forEach(([name,qty])=>{
+    text += `${name}: ${qty} adet\n`;
+  });
+
+  const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+  window.open(url, '_blank');
 }
 function toggleOrderHidden(id){
   const o = orders.find(x=>x.id===id); if(!o) return;
