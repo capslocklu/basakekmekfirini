@@ -1336,7 +1336,7 @@ function shareOrdersWhatsApp(){
   const dateStart = document.getElementById('filter-date-start').value;
   const dateEnd = document.getElementById('filter-date-end').value;
   let headerDate;
-  if(dateStart && dateEnd && dateStart===dateEnd) headerDate = formatDate(dateStart);
+  if(dateStart && dateEnd && dateStart===dateEnd) headerDate = formatDateLong(dateStart);
   else if(dateStart && dateEnd) headerDate = `${formatDate(dateStart)} – ${formatDate(dateEnd)}`;
   else if(dateStart) headerDate = formatDate(dateStart) + ' ve sonrası';
   else if(dateEnd) headerDate = formatDate(dateEnd) + ' ve öncesi';
@@ -1352,7 +1352,7 @@ function shareTomorrowWhatsApp(){
   const list = orders.filter(o => (canViewAll || o.createdBy===session.username) && o.date===tomorrow)
     .slice().sort((a,b)=>a.customer.localeCompare(b.customer,'tr'));
   if(list.length===0){ toast('Yarın için henüz sipariş yok'); return; }
-  const text = buildOrdersShareText(list, formatDate(tomorrow));
+  const text = buildOrdersShareText(list, formatDateLong(tomorrow));
   const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
   window.open(url, '_blank');
 }
@@ -1807,6 +1807,14 @@ function formatDate(d){
   const [y,m,day] = d.split('-');
   const aylar=['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
   return `${day} ${aylar[parseInt(m)-1]} ${y}`;
+}
+function formatDateLong(d){
+  if(!d) return '';
+  const [y,m,day] = d.split('-');
+  const aylar=['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+  const gunler=['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
+  const dateObj = new Date(parseInt(y), parseInt(m)-1, parseInt(day));
+  return `${parseInt(day)} ${aylar[parseInt(m)-1]} ${y} ${gunler[dateObj.getDay()]}`;
 }
 
 /* ---------- init ---------- */
