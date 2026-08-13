@@ -7,7 +7,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700;9..144,900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   *{box-sizing:border-box;}
-  body{margin:0;background:#221A12;color:#F2E6D2;font-family:'Inter',sans-serif;min-height:100vh;}
+  html{overscroll-behavior-y: contain;}
+  body{margin:0;background:#221A12;color:#F2E6D2;font-family:'Inter',sans-serif;min-height:100vh;overscroll-behavior-y: contain;}
   .wrap{max-width:900px;margin:0 auto;padding:28px 20px 60px;}
   .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
   .brand{font-family:'Fraunces',serif;font-weight:700;font-size:20px;color:#E0A73E;}
@@ -19,6 +20,9 @@
   .date-picker-row{display:flex;align-items:center;gap:10px;margin-bottom:24px;flex-wrap:wrap;}
   .date-picker-row input[type=date]{background:#2B2117;color:#F2E6D2;border:1.5px solid #4A3B29;border-radius:8px;padding:8px 10px;font-size:14px;font-family:'Inter',sans-serif;}
   .date-picker-row button{background:#3A2416;color:#E0A73E;border:1.5px solid #4A3B29;border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;font-weight:600;}
+  .date-picker-row button.active{background:#E0A73E;color:#221A12;border-color:#E0A73E;}
+  .date-group{margin-bottom:36px;}
+  .date-group-header{font-family:'Fraunces',serif;font-weight:700;font-size:22px;color:#E0A73E;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid #3A2416;}
   .totals-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;margin-bottom:36px;}
   .totals-card{background:#2B2117;border-radius:16px;padding:22px 20px;border-top:4px solid #E0A73E;}
   .totals-card .qty{font-family:'Fraunces',serif;font-weight:900;font-size:clamp(36px,6vw,48px);color:#E0A73E;line-height:1;}
@@ -47,8 +51,15 @@
   <div class="subdate" id="date-label">—</div>
   <div class="date-picker-row">
     <input type="date" id="date-picker" onchange="onDatePick()">
-    <button type="button" onclick="jumpToday()">Bugün</button>
-    <button type="button" onclick="jumpTomorrow()">Yarın</button>
+    <button type="button" id="btn-today" onclick="jumpToday()">Bugün</button>
+    <button type="button" id="btn-tomorrow" onclick="jumpTomorrow()">Yarın</button>
+    <button type="button" id="btn-all-dates" onclick="jumpAllDates()">Tüm Tarihler</button>
+  </div>
+  <div class="date-picker-row">
+    <input type="date" id="range-start" title="Başlangıç tarihi">
+    <span style="color:#8C6239;">–</span>
+    <input type="date" id="range-end" title="Bitiş tarihi">
+    <button type="button" id="btn-range" onclick="jumpRange()">Aralığı Göster</button>
   </div>
 
   <div id="content">
@@ -92,56 +103,111 @@ function formatDateLong(d){
 }
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
+let viewMode = 'single'; // 'single' | 'all'
+
 function getSelectedDate(){
   return document.getElementById('date-picker').value || getTomorrowStr();
 }
-function onDatePick(){ render(); }
-function jumpToday(){ document.getElementById('date-picker').value = getTodayStr(); render(); }
-function jumpTomorrow(){ document.getElementById('date-picker').value = getTomorrowStr(); render(); }
+function setActiveBtn(id){
+  document.querySelectorAll('.date-picker-row button').forEach(b=>b.classList.remove('active'));
+  if(id) document.getElementById(id).classList.add('active');
+}
+function onDatePick(){ viewMode='single'; setActiveBtn(null); render(); }
+function jumpToday(){ viewMode='single'; document.getElementById('date-picker').value = getTodayStr(); setActiveBtn('btn-today'); render(); }
+function jumpTomorrow(){ viewMode='single'; document.getElementById('date-picker').value = getTomorrowStr(); setActiveBtn('btn-tomorrow'); render(); }
+function jumpAllDates(){ viewMode='all'; setActiveBtn('btn-all-dates'); render(); }
+function jumpRange(){
+  const start = document.getElementById('range-start').value;
+  const end = document.getElementById('range-end').value;
+  if(!start && !end){ alert('Lütfen en az başlangıç veya bitiş tarihi seçin'); return; }
+  viewMode='range'; setActiveBtn('btn-range'); render();
+}
+
+function renderOrderCard(o){
+  return `<div class="order-card">
+      <div class="cust">${escapeHtml(o.customer)}<span class="paid-badge ${o.paid?'paid-yes':'paid-no'}">${o.paid?'Ödendi':'Ödeme bekliyor'}</span></div>
+      <div class="items">${o.items.map(it=>`${escapeHtml(it.name)} <b>×${it.qty}</b>`).join(', ')}</div>
+      ${o.address?`<div class="meta">📍 ${escapeHtml(o.address)}</div>`:''}
+      ${o.note?`<div class="meta">📝 ${escapeHtml(o.note)}</div>`:''}
+    </div>`;
+}
+function renderTotalsGrid(list){
+  const totals = {};
+  list.forEach(o=>o.items.forEach(it=>{ totals[it.name]=(totals[it.name]||0)+it.qty; }));
+  return Object.entries(totals).sort((a,b)=>b[1]-a[1]).map(([name,qty])=>`
+    <div class="totals-card"><div class="qty">${qty}</div><div class="name">${escapeHtml(name)}</div></div>
+  `).join('');
+}
+
+function renderGroupedByDate(list){
+  if(list.length===0){
+    return `<div class="empty"><b>🌙</b>Bu aralıkta kayıtlı sipariş yok.</div>`;
+  }
+  const byDate = {};
+  list.forEach(o=>{ (byDate[o.date] = byDate[o.date]||[]).push(o); });
+  const dates = Object.keys(byDate).sort(); // ascending
+  return dates.map(d=>{
+    const dayList = byDate[d];
+    return `<div class="date-group">
+      <div class="date-group-header">${formatDateLong(d)} · ${dayList.length} sipariş</div>
+      <div class="totals-grid">${renderTotalsGrid(dayList)}</div>
+      ${dayList.slice().sort((a,b)=>a.customer.localeCompare(b.customer,'tr')).map(renderOrderCard).join('')}
+    </div>`;
+  }).join('');
+}
 
 function render(){
+  const content = document.getElementById('content');
+  const titleEl = document.getElementById('main-title');
+
+  if(viewMode==='all'){
+    titleEl.textContent = 'Tüm Siparişler';
+    document.getElementById('date-label').textContent = ordersCache.length + ' sipariş · tüm tarihler';
+    content.innerHTML = renderGroupedByDate(ordersCache);
+    return;
+  }
+
+  if(viewMode==='range'){
+    const start = document.getElementById('range-start').value;
+    const end = document.getElementById('range-end').value;
+    let list = ordersCache;
+    if(start) list = list.filter(o=>o.date>=start);
+    if(end) list = list.filter(o=>o.date<=end);
+    titleEl.textContent = 'Tarih Aralığı';
+    const rangeLabel = start && end ? `${formatDateLong(start)} – ${formatDateLong(end)}`
+      : start ? `${formatDateLong(start)} ve sonrası`
+      : `${formatDateLong(end)} ve öncesi`;
+    document.getElementById('date-label').textContent = `${list.length} sipariş · ${rangeLabel}`;
+    content.innerHTML = renderGroupedByDate(list);
+    return;
+  }
+
   const selected = getSelectedDate();
   const today = getTodayStr();
   const tomorrow = getTomorrowStr();
-  const titleEl = document.getElementById('main-title');
   if(selected===tomorrow) titleEl.textContent = 'Yarının Üretimi';
   else if(selected===today) titleEl.textContent = 'Bugünün Üretimi';
   else titleEl.textContent = 'Üretim Listesi';
   document.getElementById('date-label').textContent = formatDateLong(selected);
 
   const list = ordersCache.filter(o=>o.date===selected);
-  const content = document.getElementById('content');
 
   if(list.length===0){
     content.innerHTML = `<div class="empty"><b>🌙</b>Bu tarih için henüz kayıtlı sipariş yok.</div>`;
     return;
   }
 
-  const totals = {};
-  list.forEach(o=>o.items.forEach(it=>{ totals[it.name]=(totals[it.name]||0)+it.qty; }));
-  const totalsHtml = Object.entries(totals).sort((a,b)=>b[1]-a[1]).map(([name,qty])=>`
-    <div class="totals-card"><div class="qty">${qty}</div><div class="name">${escapeHtml(name)}</div></div>
-  `).join('');
-
-  const ordersHtml = list.slice().sort((a,b)=>a.customer.localeCompare(b.customer,'tr')).map(o=>`
-    <div class="order-card">
-      <div class="cust">${escapeHtml(o.customer)}<span class="paid-badge ${o.paid?'paid-yes':'paid-no'}">${o.paid?'Ödendi':'Ödeme bekliyor'}</span></div>
-      <div class="items">${o.items.map(it=>`${escapeHtml(it.name)} <b>×${it.qty}</b>`).join(', ')}</div>
-      ${o.address?`<div class="meta">📍 ${escapeHtml(o.address)}</div>`:''}
-      ${o.note?`<div class="meta">📝 ${escapeHtml(o.note)}</div>`:''}
-    </div>
-  `).join('');
-
   content.innerHTML = `
     <h2 class="section">Toplam Üretim (${list.length} sipariş)</h2>
-    <div class="totals-grid">${totalsHtml}</div>
+    <div class="totals-grid">${renderTotalsGrid(list)}</div>
     <h2 class="section">Sipariş Detayları</h2>
-    ${ordersHtml}
+    ${list.slice().sort((a,b)=>a.customer.localeCompare(b.customer,'tr')).map(renderOrderCard).join('')}
   `;
 }
 
 async function init(){
   document.getElementById('date-picker').value = getTomorrowStr();
+  setActiveBtn('btn-tomorrow');
   try{
     await firebase.auth().signInAnonymously();
     db.collection('basak_app').doc('products').onSnapshot(snap=>{
@@ -161,6 +227,18 @@ async function init(){
   }
 }
 init();
+
+let touchStartY = 0;
+document.addEventListener('touchstart', function(e){
+  touchStartY = e.touches[0].clientY;
+}, {passive:true});
+document.addEventListener('touchmove', function(e){
+  const touchY = e.touches[0].clientY;
+  const scrollTop = window.scrollY || document.documentElement.scrollTop;
+  if(scrollTop <= 0 && touchY > touchStartY){
+    e.preventDefault();
+  }
+}, {passive:false});
 
 // Gece yarısı geçişinde "yarın" tarihi değişeceği için ekranı periyodik tazele
 setInterval(render, 60000);

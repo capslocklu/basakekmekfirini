@@ -50,7 +50,8 @@
     #report-print-area{ position:absolute; top:0; left:0; width:100%; padding:20px; color:#000; display:block !important; }
   }
   *{box-sizing:border-box;}
-  body{margin:0;background:var(--crumb);color:var(--crust-dark);font-family:'Inter',sans-serif;-webkit-tap-highlight-color:transparent;}
+  html{overscroll-behavior-y: contain;}
+  body{margin:0;background:var(--crumb);color:var(--crust-dark);font-family:'Inter',sans-serif;-webkit-tap-highlight-color:transparent;overscroll-behavior-y: contain;}
   h1,h2,h3,.display{font-family:'Fraunces',serif;}
   #app{max-width:480px;margin:0 auto;min-height:100vh;background:var(--crumb);display:flex;flex-direction:column;position:relative;}
 
@@ -1816,6 +1817,21 @@ function formatDateLong(d){
   const dateObj = new Date(parseInt(y), parseInt(m)-1, parseInt(day));
   return `${parseInt(day)} ${aylar[parseInt(m)-1]} ${y} ${gunler[dateObj.getDay()]}`;
 }
+
+/* Bazı eski WebView'lerde overscroll-behavior CSS'i yetersiz kalabiliyor;
+   sayfa en üstteyken aşağı çekme hareketini engelleyerek "pull-to-refresh"
+   nedeniyle uygulamanın kendini yenileyip giriş ekranına dönmesini önlüyoruz. */
+let touchStartY = 0;
+document.addEventListener('touchstart', function(e){
+  touchStartY = e.touches[0].clientY;
+}, {passive:true});
+document.addEventListener('touchmove', function(e){
+  const touchY = e.touches[0].clientY;
+  const scrollTop = window.scrollY || document.documentElement.scrollTop;
+  if(scrollTop <= 0 && touchY > touchStartY){
+    e.preventDefault();
+  }
+}, {passive:false});
 
 /* ---------- init ---------- */
 (async function init(){
