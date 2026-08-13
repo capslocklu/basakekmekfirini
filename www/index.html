@@ -222,6 +222,7 @@
       </div>
       <div style="display:flex;align-items:center;gap:10px;">
         <div class="sync-pill"><span class="sync-dot"></span><span id="sync-label">senkronize</span></div>
+        <button class="logout-btn" onclick="manualRefresh(event)" title="Yenile" style="font-size:18px;line-height:1;">⟳</button>
         <button class="logout-btn" onclick="doLogout()">Çıkış</button>
       </div>
     </div>
@@ -781,6 +782,22 @@ function applyPermissionUI(){
 
 /* ---------- NAV ---------- */
 let ordersDateDefaultsApplied = false;
+async function manualRefresh(evt){
+  const btn = evt ? evt.currentTarget : null;
+  if(btn){ btn.style.transition='transform .5s'; btn.style.transform='rotate(360deg)'; }
+  document.getElementById('sync-label').textContent = 'güncelleniyor...';
+  await loadAll();
+  document.getElementById('sync-label').textContent = db ? 'canlı' : (hasClaudeStorage ? 'senkronize' : 'yerel kayıt');
+  const activeView = document.querySelector('.view.active');
+  const name = activeView ? activeView.id.replace('view-','') : 'orders';
+  if(name==='orders') renderOrders();
+  else if(name==='products') renderProducts();
+  else if(name==='staff') renderStaff();
+  else if(name==='report') renderReport();
+  else if(name==='settings' && session.role==='admin') renderActivityLog();
+  toast('Güncellendi');
+  if(btn) setTimeout(()=>{ btn.style.transform='rotate(0deg)'; }, 500);
+}
 function switchView(name){
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   document.getElementById('view-'+name).classList.add('active');
