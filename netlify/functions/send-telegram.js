@@ -89,7 +89,7 @@ exports.handler = async (event) => {
     else { targetDate = dateStr(1); label = 'Yarın'; }
 
     const list = orders
-      .filter(o => o.date === targetDate && !o.hidden)
+      .filter(o => o.date === targetDate && !o.hidden && !o.deleted)
       .sort((a, b) => a.customer.localeCompare(b.customer, 'tr'));
 
     let text;
