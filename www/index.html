@@ -360,6 +360,9 @@
       <div id="recurring-due-banner"></div>
       <button type="button" class="btn btn-ghost" style="width:100%;" onclick="openRecurringManageModal()">Şablonları Yönet</button>
 
+      <label style="display:block;font-size:12px;font-weight:600;color:var(--tan);margin:22px 0 8px;text-transform:uppercase;letter-spacing:.03em;">🗑️ Çöp Kutusu</label>
+      <button type="button" class="btn btn-ghost" style="width:100%;" onclick="openTrashModal()">Silinen Siparişleri Görüntüle</button>
+
       <p style="font-size:11.5px;color:var(--tan);margin-top:22px;line-height:1.5;" id="sync-explainer">Bu uygulama Firebase üzerinden çalışıyor: sipariş, ürün ve personel verileri internet üzerinden tüm cihazlarla anlık olarak senkronize edilir.</p>
 
       <div id="activity-log-section" style="display:none;margin-top:24px;">
@@ -517,6 +520,15 @@
     <div class="field"><label>Adres</label><textarea id="recurring-address" placeholder="Teslimat adresi"></textarea></div>
     <div class="field"><label>Not</label><textarea id="recurring-note" placeholder="Opsiyonel"></textarea></div>
     <button class="btn btn-primary" onclick="saveRecurringTemplate()">Şablonu Kaydet</button>
+  </div>
+</div>
+
+<!-- TRASH MODAL -->
+<div class="modal-overlay" id="modal-trash">
+  <div class="modal-sheet">
+    <div class="modal-head"><h3>Çöp Kutusu</h3><button class="close-x" onclick="closeModal('modal-trash')">✕</button></div>
+    <p style="font-size:12px;color:var(--tan);margin:-6px 0 14px;">Silinen siparişler burada tutulur, kalıcı olarak silinmezler. Geri yükleyebilir veya kalıcı olarak silebilirsiniz.</p>
+    <div id="trash-list"></div>
   </div>
 </div>
 
@@ -1165,14 +1177,17 @@ async function togglePaid(id){
 }
 async function deleteOrder(id){
   const o = orders.find(x=>x.id===id);
-  orders = orders.filter(x=>x.id!==id);
+  if(!o) return;
+  o.deleted = true;
+  o.deletedAt = Date.now();
   await saveOrders(); renderOrders();
-  if(o) logActivity(`Siparişi sildi: ${o.customer}`);
+  toast('Sipariş çöp kutusuna taşındı');
+  logActivity(`Siparişi çöp kutusuna taşıdı: ${o.customer}`);
 }
 function openCustomerHistory(encodedName){
   const name = decodeURIComponent(encodedName);
   const canViewAll = session.role==='admin' || session.permissions.order_viewall;
-  const history = orders.filter(o => o.customer===name && (canViewAll || o.createdBy===session.username))
+  const history = orders.filter(o => !o.deleted && o.customer===name && (canViewAll || o.createdBy===session.username))
     .sort((a,b)=>b.createdAt-a.createdAt);
   document.getElementById('customer-history-title').textContent = name;
   let paid=0, pending=0;
@@ -1208,7 +1223,7 @@ function renderTomorrowReminder(){
   try{ dismissed = localStorage.getItem('basak_reminder_dismissed'); }catch(e){}
   if(now.getHours() < 12 || dismissed === tomorrow){ el.innerHTML=''; return; }
   const canViewAll = session.role==='admin' || session.permissions.order_viewall;
-  const tomorrowOrders = orders.filter(o => o.date===tomorrow && (canViewAll || o.createdBy===session.username));
+  const tomorrowOrders = orders.filter(o => !o.deleted && o.date===tomorrow && (canViewAll || o.createdBy===session.username));
   if(tomorrowOrders.length===0){ el.innerHTML=''; return; }
   const totals = {};
   tomorrowOrders.forEach(o=>o.items.forEach(it=>{ totals[it.name]=(totals[it.name]||0)+it.qty; }));
@@ -1279,7 +1294,7 @@ function toggleCustomerFilterPanel(){
 function renderCustomerFilterPanel(){
   const panel = document.getElementById('customer-filter-panel');
   const canViewAll = session.role==='admin' || session.permissions.order_viewall;
-  const visibleOrders = orders.filter(o => canViewAll || o.createdBy===session.username);
+  const visibleOrders = orders.filter(o => !o.deleted && (canViewAll || o.createdBy===session.username));
   const names = [...new Set(visibleOrders.map(o=>o.customer))].sort((a,b)=>a.localeCompare(b,'tr'));
   if(names.length===0){ panel.innerHTML = '<div class="empty" style="padding:10px;">Müşteri yok</div>'; return; }
   panel.innerHTML = names.map(name=>`
@@ -1327,7 +1342,7 @@ function getCurrentlyFilteredOrders(){
   const dateEnd = document.getElementById('filter-date-end').value;
   const search = document.getElementById('filter-search').value.trim().toLowerCase();
   const canViewAll = session.role==='admin' || session.permissions.order_viewall;
-  let list = orders.filter(o => canViewAll || o.createdBy===session.username);
+  let list = orders.filter(o => !o.deleted && (canViewAll || o.createdBy===session.username));
   if(dateStart) list = list.filter(o=>o.date>=dateStart);
   if(dateEnd) list = list.filter(o=>o.date<=dateEnd);
   if(search) list = list.filter(o=>o.customer.toLowerCase().includes(search));
@@ -1374,7 +1389,7 @@ function shareOrdersWhatsApp(){
 function shareTomorrowWhatsApp(){
   const tomorrow = getTomorrowStr();
   const canViewAll = session.role==='admin' || session.permissions.order_viewall;
-  const list = orders.filter(o => (canViewAll || o.createdBy===session.username) && o.date===tomorrow)
+  const list = orders.filter(o => !o.deleted && (canViewAll || o.createdBy===session.username) && o.date===tomorrow)
     .slice().sort((a,b)=>a.customer.localeCompare(b.customer,'tr'));
   if(list.length===0){ toast('Yarın için henüz sipariş yok'); return; }
   const text = buildOrdersShareText(list, formatDateLong(tomorrow));
@@ -1411,7 +1426,7 @@ function renderOrders(){
   const search = document.getElementById('filter-search').value.trim().toLowerCase();
   const sortOrder = document.getElementById('sort-order').value;
   const canViewAll = session.role==='admin' || session.permissions.order_viewall;
-  let list = orders.filter(o => canViewAll || o.createdBy===session.username);
+  let list = orders.filter(o => !o.deleted && (canViewAll || o.createdBy===session.username));
   if(dateStart) list = list.filter(o=>o.date>=dateStart);
   if(dateEnd) list = list.filter(o=>o.date<=dateEnd);
   if(search) list = list.filter(o=>o.customer.toLowerCase().includes(search));
@@ -1513,7 +1528,7 @@ function selectAllVisible(){
   const dateEnd = document.getElementById('filter-date-end').value;
   const search = document.getElementById('filter-search').value.trim().toLowerCase();
   const canViewAll = session.role==='admin' || session.permissions.order_viewall;
-  let list = orders.filter(o => canViewAll || o.createdBy===session.username);
+  let list = orders.filter(o => !o.deleted && (canViewAll || o.createdBy===session.username));
   if(dateStart) list = list.filter(o=>o.date>=dateStart);
   if(dateEnd) list = list.filter(o=>o.date<=dateEnd);
   if(search) list = list.filter(o=>o.customer.toLowerCase().includes(search));
@@ -1527,14 +1542,73 @@ function selectAllVisible(){
 }
 async function deleteSelectedOrders(){
   if(selectedOrderIds.size===0){ toast('Hiç sipariş seçilmedi'); return; }
-  if(!confirm(`${selectedOrderIds.size} sipariş kalıcı olarak silinecek. Emin misiniz?`)) return;
+  if(!confirm(`${selectedOrderIds.size} sipariş çöp kutusuna taşınacak. Emin misiniz?`)) return;
   const count = selectedOrderIds.size;
-  orders = orders.filter(o=>!selectedOrderIds.has(o.id));
+  const now = Date.now();
+  orders.forEach(o=>{ if(selectedOrderIds.has(o.id)){ o.deleted = true; o.deletedAt = now; } });
   selectedOrderIds.clear();
   await saveOrders();
   renderOrders();
-  toast(`${count} sipariş silindi`);
-  logActivity(`Toplu silme: ${count} sipariş silindi`);
+  toast(`${count} sipariş çöp kutusuna taşındı`);
+  logActivity(`Toplu silme: ${count} sipariş çöp kutusuna taşındı`);
+}
+
+/* ---------- TRASH BIN ---------- */
+function openTrashModal(){
+  renderTrashList();
+  document.getElementById('modal-trash').classList.add('active');
+}
+function renderTrashList(){
+  const wrap = document.getElementById('trash-list');
+  const canViewAll = session.role==='admin' || session.permissions.order_viewall;
+  const deletedOrders = orders
+    .filter(o => o.deleted && (canViewAll || o.createdBy===session.username))
+    .sort((a,b)=>(b.deletedAt||0)-(a.deletedAt||0));
+  if(deletedOrders.length===0){ wrap.innerHTML = '<div class="empty">Çöp kutusu boş.</div>'; return; }
+  wrap.innerHTML = deletedOrders.map(o=>`
+    <div class="list-item" style="align-items:flex-start;">
+      <div class="info">
+        <b>${escapeHtml(o.customer)}</b>
+        <span>${o.items.map(it=>`${escapeHtml(it.name)} ×${it.qty}`).join(', ')} · ${formatDate(o.date)}</span>
+        <span>Silindi: ${o.deletedAt ? new Date(o.deletedAt).toLocaleString('tr-TR') : '—'}</span>
+      </div>
+      <div style="display:flex;gap:6px;flex:none;">
+        <button class="icon-btn" onclick="restoreOrder('${o.id}')" title="Geri Yükle">↩️</button>
+        <button class="icon-btn danger" onclick="permanentDeleteOrder('${o.id}')" title="Kalıcı Sil">🗑</button>
+      </div>
+    </div>`).join('') +
+    `<button type="button" class="btn btn-ghost" style="width:100%;margin-top:10px;color:var(--danger);" onclick="emptyTrash()">Çöp Kutusunu Boşalt (Kalıcı)</button>`;
+}
+async function restoreOrder(id){
+  const o = orders.find(x=>x.id===id); if(!o) return;
+  delete o.deleted; delete o.deletedAt;
+  await saveOrders();
+  renderTrashList();
+  renderOrders();
+  toast('Sipariş geri yüklendi');
+  logActivity(`Siparişi geri yükledi: ${o.customer}`);
+}
+async function permanentDeleteOrder(id){
+  const o = orders.find(x=>x.id===id); if(!o) return;
+  if(!confirm(`"${o.customer}" siparişi kalıcı olarak silinecek, bu işlem geri alınamaz. Emin misiniz?`)) return;
+  orders = orders.filter(x=>x.id!==id);
+  await saveOrders();
+  renderTrashList();
+  renderOrders();
+  toast('Kalıcı olarak silindi');
+  logActivity(`Siparişi kalıcı olarak sildi: ${o.customer}`);
+}
+async function emptyTrash(){
+  const canViewAll = session.role==='admin' || session.permissions.order_viewall;
+  const count = orders.filter(o => o.deleted && (canViewAll || o.createdBy===session.username)).length;
+  if(count===0) return;
+  if(!confirm(`${count} sipariş kalıcı olarak silinecek, bu işlem geri alınamaz. Emin misiniz?`)) return;
+  orders = orders.filter(o => !(o.deleted && (canViewAll || o.createdBy===session.username)));
+  await saveOrders();
+  renderTrashList();
+  renderOrders();
+  toast('Çöp kutusu boşaltıldı');
+  logActivity(`Çöp kutusunu boşalttı (${count} sipariş)`);
 }
 function openProductModal(id){
   const canEdit = session.role==='admin' || session.permissions.products;
@@ -1731,7 +1805,7 @@ function renderActivityLog(){
 function getReportRangeOrders(){
   const period = document.getElementById('report-period').value;
   const canViewAll = session.role==='admin' || session.permissions.order_viewall;
-  let list = orders.filter(o => canViewAll || o.createdBy===session.username);
+  let list = orders.filter(o => !o.deleted && (canViewAll || o.createdBy===session.username));
   const now = new Date();
   const todayStr = now.toISOString().slice(0,10);
   if(period==='today'){

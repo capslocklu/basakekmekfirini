@@ -215,7 +215,7 @@ async function init(){
       render();
     });
     db.collection('basak_app').doc('orders').onSnapshot(snap=>{
-      if(snap.exists){ try{ ordersCache = JSON.parse(snap.data().value); }catch(e){} }
+      if(snap.exists){ try{ ordersCache = JSON.parse(snap.data().value).filter(o=>!o.deleted); }catch(e){} }
       document.getElementById('sync-label').textContent = 'canlı';
       render();
     }, err=>{
