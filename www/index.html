@@ -566,7 +566,7 @@
 // Her GitHub'a yeni bir sürüm yüklendiğinde bu numarayı güncelleyin —
 // üst çubuktaki "v..." etiketi buradan geliyor, hangi sürümün canlıda
 // olduğunu tek bakışta anlamanızı sağlar.
-const APP_VERSION = "1.1.3-debug";
+const APP_VERSION = "1.2.0";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAnCtP9iEQqbDS6CFH2U6yy56HDPUE_Kfc",
@@ -635,7 +635,11 @@ async function startRealtimeSync(){
     const unsub = db.collection('basak_app').doc(key).onSnapshot(snap=>{
       if(!snap.exists) return;
       try{ applyFn(JSON.parse(snap.data().value)); }catch(e){}
-      if(session){ renderOrders(); renderProducts(); renderStaff(); }
+      if(session){
+        try{ renderOrders(); }catch(e){ console.warn('renderOrders arka plan hatası:', e); }
+        try{ renderProducts(); }catch(e){ console.warn('renderProducts arka plan hatası:', e); }
+        try{ renderStaff(); }catch(e){ console.warn('renderStaff arka plan hatası:', e); }
+      }
     }, err=>console.warn('Senkronizasyon hatası:', key, err));
     realtimeUnsubscribers.push(unsub);
   };
@@ -1425,7 +1429,6 @@ function shareTomorrowWhatsApp(){
   window.open(url, '_blank');
 }
 async function sendTelegram(type, btnEl){
-  alert('DEBUG 1: Buton tıklandı, tür=' + type);
   if(btnEl){ btnEl.disabled = true; btnEl.style.opacity = '.7'; }
   let timeoutId;
   try{
@@ -1435,22 +1438,20 @@ async function sendTelegram(type, btnEl){
       timeoutId = setTimeout(()=>controller.abort(), 15000);
       signal = controller.signal;
     }catch(e){ /* AbortController desteklenmiyorsa zaman aşımı olmadan devam et */ }
-    alert('DEBUG 2: İstek gönderiliyor...');
     const resp = await fetch(`/.netlify/functions/send-telegram?type=${type}&_=${Date.now()}`, {signal, cache: 'no-store'});
     if(timeoutId) clearTimeout(timeoutId);
-    alert('DEBUG 3: Yanıt geldi, HTTP durumu=' + resp.status);
     let data;
     try{ data = await resp.json(); }
-    catch(parseErr){ alert('DEBUG HATA: Yanıt JSON değil: ' + parseErr.message); return; }
-    alert('DEBUG 4: ' + JSON.stringify(data));
+    catch(parseErr){ alert('Telegram: sunucu beklenmeyen bir yanıt verdi, tekrar deneyin.'); return; }
     if(data.ok){
-      toast(`Gönderildi (${data.orderCount} sipariş)`);
+      alert(`Telegram'a gönderildi ✅ (${data.orderCount} sipariş)`);
     } else {
-      toast('Gönderilemedi: ' + (data.error||'bilinmeyen hata'));
+      alert('Telegram gönderilemedi ❌: ' + (data.error||'bilinmeyen hata'));
     }
   }catch(e){
     if(timeoutId) clearTimeout(timeoutId);
-    alert('DEBUG HATA: ' + (e && e.name) + ' — ' + (e && e.message));
+    if(e && e.name==='AbortError') alert('Telegram: zaman aşımı, tekrar deneyin.');
+    else alert('Telegram: bağlantı hatası, tekrar deneyin.');
   }finally{
     if(btnEl){ btnEl.disabled = false; btnEl.style.opacity = '1'; }
   }
@@ -2082,7 +2083,7 @@ document.addEventListener('touchmove', function(e){
 
 /* ---------- init ---------- */
 window.addEventListener('error', function(e){
-  alert('GENEL HATA YAKALANDI: ' + e.message + ' (satır: ' + e.lineno + ')');
+  console.warn('Yakalanan genel hata:', e.message, 'satır:', e.lineno);
 });
 
 (async function init(){
