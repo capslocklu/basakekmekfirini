@@ -566,7 +566,7 @@
 // Her GitHub'a yeni bir sürüm yüklendiğinde bu numarayı güncelleyin —
 // üst çubuktaki "v..." etiketi buradan geliyor, hangi sürümün canlıda
 // olduğunu tek bakışta anlamanızı sağlar.
-const APP_VERSION = "1.1.1";
+const APP_VERSION = "1.1.2";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAnCtP9iEQqbDS6CFH2U6yy56HDPUE_Kfc",
@@ -1426,12 +1426,17 @@ function shareTomorrowWhatsApp(){
 }
 async function sendTelegram(type, btnEl){
   if(btnEl){ btnEl.disabled = true; btnEl.style.opacity = '.7'; }
-  toast('Telegram\'a gönderiliyor...');
-  const controller = new AbortController();
-  const timeoutId = setTimeout(()=>controller.abort(), 15000);
+  let timeoutId;
   try{
-    const resp = await fetch(`/.netlify/functions/send-telegram?type=${type}&_=${Date.now()}`, {signal: controller.signal, cache: 'no-store'});
-    clearTimeout(timeoutId);
+    toast('Telegram\'a gönderiliyor...');
+    let signal;
+    try{
+      const controller = new AbortController();
+      timeoutId = setTimeout(()=>controller.abort(), 15000);
+      signal = controller.signal;
+    }catch(e){ /* AbortController desteklenmiyorsa zaman aşımı olmadan devam et */ }
+    const resp = await fetch(`/.netlify/functions/send-telegram?type=${type}&_=${Date.now()}`, {signal, cache: 'no-store'});
+    if(timeoutId) clearTimeout(timeoutId);
     let data;
     try{ data = await resp.json(); }
     catch(parseErr){ toast('Sunucu beklenmeyen bir yanıt verdi, tekrar deneyin'); return; }
@@ -1441,8 +1446,8 @@ async function sendTelegram(type, btnEl){
       toast('Gönderilemedi: ' + (data.error||'bilinmeyen hata'));
     }
   }catch(e){
-    clearTimeout(timeoutId);
-    if(e.name==='AbortError') toast('Zaman aşımı — tekrar deneyin');
+    if(timeoutId) clearTimeout(timeoutId);
+    if(e && e.name==='AbortError') toast('Zaman aşımı — tekrar deneyin');
     else toast('Bağlantı hatası, tekrar deneyin');
   }finally{
     if(btnEl){ btnEl.disabled = false; btnEl.style.opacity = '1'; }
