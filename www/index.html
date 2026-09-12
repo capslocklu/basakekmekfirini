@@ -222,6 +222,7 @@
       </div>
       <div style="display:flex;align-items:center;gap:10px;">
         <div class="sync-pill"><span class="sync-dot"></span><span id="sync-label">senkronize</span></div>
+        <span style="font-size:9.5px;color:var(--tan);opacity:.8;">v<span id="app-version-label"></span></span>
         <button class="logout-btn" onclick="manualRefresh(event)" title="Yenile" style="font-size:18px;line-height:1;">⟳</button>
         <button class="logout-btn" onclick="doLogout()">Çıkış</button>
       </div>
@@ -269,6 +270,8 @@
         </button>
         <button type="button" class="btn btn-primary" style="flex:1;background:#25D366;box-shadow:0 3px 0 #1DA851;display:flex;align-items:center;justify-content:center;gap:6px;font-size:13px;padding:11px 6px;" onclick="shareTomorrowWhatsApp()">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="#fff"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38a9.9 9.9 0 0 0 4.74 1.21h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2m0 1.67a8.2 8.2 0 0 1 5.83 2.42 8.19 8.19 0 0 1 2.41 5.82c0 4.55-3.7 8.24-8.25 8.24a8.2 8.2 0 0 1-4.19-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.18 8.18 0 0 1-1.26-4.38c0-4.55 3.7-8.24 8.25-8.24M8.53 6.74c-.16 0-.42.06-.64.3-.22.24-.85.83-.85 2.03s.87 2.36.99 2.52c.12.16 1.7 2.7 4.18 3.68 2.06.82 2.48.66 2.93.62.45-.04 1.45-.6 1.65-1.17.2-.58.2-1.08.14-1.18-.06-.1-.22-.16-.46-.28-.24-.12-1.45-.72-1.68-.8-.22-.08-.39-.12-.55.13-.16.24-.63.8-.78.96-.14.16-.28.18-.53.06-.24-.12-1.02-.38-1.94-1.2-.72-.64-1.2-1.43-1.35-1.67-.14-.24-.02-.37.11-.5.11-.11.24-.28.36-.42.12-.14.16-.24.24-.4.08-.16.04-.3-.02-.42-.06-.12-.55-1.36-.76-1.86-.2-.48-.4-.42-.55-.42h-.4"/></svg>
+          Yarını Paylaş
+        </button>
       </div>
       <div style="display:flex;gap:8px;margin-bottom:12px;">
         <button type="button" class="btn btn-primary" style="flex:1;background:#26A5E4;box-shadow:0 3px 0 #1B87BD;display:flex;align-items:center;justify-content:center;gap:6px;font-size:13px;padding:11px 6px;" onclick="sendTelegram('tomorrow', this)">
@@ -362,6 +365,13 @@
 
       <label style="display:block;font-size:12px;font-weight:600;color:var(--tan);margin:22px 0 8px;text-transform:uppercase;letter-spacing:.03em;">🗑️ Çöp Kutusu</label>
       <button type="button" class="btn btn-ghost" style="width:100%;" onclick="openTrashModal()">Silinen Siparişleri Görüntüle</button>
+
+      <label style="display:block;font-size:12px;font-weight:600;color:var(--tan);margin:22px 0 8px;text-transform:uppercase;letter-spacing:.03em;">💾 Veri Yedekleme</label>
+      <div id="auto-backup-status" style="font-size:11.5px;color:var(--tan);margin-bottom:8px;"></div>
+      <button type="button" class="btn btn-ghost" style="width:100%;margin-bottom:8px;" onclick="downloadBackup()">Yedek İndir (JSON)</button>
+      <button type="button" class="btn btn-ghost" style="width:100%;margin-bottom:8px;" onclick="document.getElementById('backup-file-input').click()">Dosyadan Geri Yükle</button>
+      <input type="file" id="backup-file-input" accept="application/json" style="display:none;" onchange="restoreFromFile(event)">
+      <button type="button" id="restore-auto-backup-btn" class="btn btn-ghost" style="width:100%;display:none;" onclick="restoreFromAutoBackup()">Son Otomatik Yedekten Geri Yükle</button>
 
       <div id="telegram-config-section" style="display:none;">
         <label style="display:block;font-size:12px;font-weight:600;color:var(--tan);margin:22px 0 8px;text-transform:uppercase;letter-spacing:.03em;">🔵 Telegram Bot Ayarları</label>
@@ -553,6 +563,11 @@
    3) localStorage (internet/Firebase yoksa cihaza özel yedek)
    ========================================================= */
 
+// Her GitHub'a yeni bir sürüm yüklendiğinde bu numarayı güncelleyin —
+// üst çubuktaki "v..." etiketi buradan geliyor, hangi sürümün canlıda
+// olduğunu tek bakışta anlamanızı sağlar.
+const APP_VERSION = "1.1.0";
+
 const firebaseConfig = {
   apiKey: "AIzaSyAnCtP9iEQqbDS6CFH2U6yy56HDPUE_Kfc",
   authDomain: "basak-ekmek-firini.firebaseapp.com",
@@ -649,23 +664,19 @@ function toast(msg){
 }
 
 async function loadAll(){
-  try{
-    const uv = await storageGet('users');
-    users = uv ? JSON.parse(uv) : [DEFAULT_ADMIN];
-  }catch(e){ users = [DEFAULT_ADMIN]; }
+  const [uv, pv, ov, rv] = await Promise.all([
+    storageGet('users').catch(()=>null),
+    storageGet('products').catch(()=>null),
+    storageGet('orders').catch(()=>null),
+    storageGet('recurring_templates').catch(()=>null)
+  ]);
+
+  try{ users = uv ? JSON.parse(uv) : [DEFAULT_ADMIN]; }catch(e){ users = [DEFAULT_ADMIN]; }
   if(!users || users.length===0){ users = [DEFAULT_ADMIN]; await storageSet('users', JSON.stringify(users)); }
 
-  try{
-    const pv = await storageGet('products');
-    products = pv ? JSON.parse(pv) : [];
-  }catch(e){ products = []; }
-
-  try{
-    const ov = await storageGet('orders');
-    orders = ov ? JSON.parse(ov) : [];
-  }catch(e){ orders = []; }
-
-  await loadRecurring();
+  try{ products = pv ? JSON.parse(pv) : []; }catch(e){ products = []; }
+  try{ orders = ov ? JSON.parse(ov) : []; }catch(e){ orders = []; }
+  try{ recurringTemplates = rv ? JSON.parse(rv) : []; }catch(e){ recurringTemplates = []; }
 }
 
 async function saveUsers(){ await storageSet('users', JSON.stringify(users)); }
@@ -854,8 +865,11 @@ function switchView(name){
     if(session.role==='admin'){
       document.getElementById('telegram-config-section').style.display = 'block';
       loadTelegramConfigIntoForm();
+      loadAutoBackupStatus();
     } else {
       document.getElementById('telegram-config-section').style.display = 'none';
+      document.getElementById('auto-backup-status').textContent = '';
+      document.getElementById('restore-auto-backup-btn').style.display = 'none';
     }
   }
 }
@@ -1411,21 +1425,28 @@ function shareTomorrowWhatsApp(){
   window.open(url, '_blank');
 }
 async function sendTelegram(type, btnEl){
-  const originalText = btnEl ? btnEl.innerHTML : '';
   if(btnEl){ btnEl.disabled = true; btnEl.style.opacity = '.7'; }
   toast('Telegram\'a gönderiliyor...');
+  const controller = new AbortController();
+  const timeoutId = setTimeout(()=>controller.abort(), 15000);
   try{
-    const resp = await fetch(`/.netlify/functions/send-telegram?type=${type}`);
-    const data = await resp.json();
+    const resp = await fetch(`/.netlify/functions/send-telegram?type=${type}`, {signal: controller.signal});
+    clearTimeout(timeoutId);
+    let data;
+    try{ data = await resp.json(); }
+    catch(parseErr){ toast('Sunucu beklenmeyen bir yanıt verdi, tekrar deneyin'); return; }
     if(data.ok){
       toast(`Gönderildi (${data.orderCount} sipariş)`);
     } else {
       toast('Gönderilemedi: ' + (data.error||'bilinmeyen hata'));
     }
   }catch(e){
-    toast('Bağlantı hatası, tekrar deneyin');
+    clearTimeout(timeoutId);
+    if(e.name==='AbortError') toast('Zaman aşımı — tekrar deneyin');
+    else toast('Bağlantı hatası, tekrar deneyin');
+  }finally{
+    if(btnEl){ btnEl.disabled = false; btnEl.style.opacity = '1'; }
   }
-  if(btnEl){ btnEl.disabled = false; btnEl.style.opacity = '1'; }
 }
 function toggleOrderHidden(id){
   const o = orders.find(x=>x.id===id); if(!o) return;
@@ -1807,6 +1828,76 @@ async function saveTelegramConfig(){
   logActivity('Telegram bot ayarlarını güncelledi');
 }
 
+/* ---------- VERİ YEDEKLEME ---------- */
+function downloadBackup(){
+  const backup = {
+    exportedAt: new Date().toISOString(),
+    exportedBy: session.username,
+    users, products, orders, recurringTemplates
+  };
+  const blob = new Blob([JSON.stringify(backup, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `basak-yedek-${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('Yedek indirildi');
+  logActivity('Manuel yedek indirdi');
+}
+async function applyRestoredData(data, sourceLabel){
+  if(!data || !Array.isArray(data.users) || !Array.isArray(data.products) || !Array.isArray(data.orders)){
+    toast('Geçersiz yedek dosyası'); return;
+  }
+  if(!confirm(`Mevcut TÜM veriler (${sourceLabel}) ile değiştirilecek. Bu işlem geri alınamaz. Emin misiniz?`)) return;
+  users = data.users;
+  products = data.products;
+  orders = data.orders;
+  recurringTemplates = data.recurringTemplates || [];
+  await Promise.all([saveUsers(), saveProducts(), saveOrders(), saveRecurring()]);
+  toast('Veriler geri yüklendi');
+  logActivity(`Yedekten geri yükledi: ${sourceLabel}`);
+  renderOrders(); renderProducts(); renderStaff();
+}
+function restoreFromFile(evt){
+  const file = evt.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async function(e){
+    try{
+      const data = JSON.parse(e.target.result);
+      await applyRestoredData(data, 'yüklenen dosya');
+    }catch(err){
+      toast('Dosya okunamadı, geçerli bir JSON yedeği seçin');
+    }
+    evt.target.value = '';
+  };
+  reader.readAsText(file);
+}
+async function loadAutoBackupStatus(){
+  const el = document.getElementById('auto-backup-status');
+  const btn = document.getElementById('restore-auto-backup-btn');
+  try{
+    const v = await storageGet('backup_latest');
+    if(!v){ el.textContent = 'Henüz otomatik yedek alınmadı.'; btn.style.display='none'; return; }
+    const backup = JSON.parse(v);
+    el.textContent = 'Son otomatik yedek: ' + new Date(backup.backedUpAt).toLocaleString('tr-TR');
+    btn.style.display = 'block';
+  }catch(e){
+    el.textContent = '';
+    btn.style.display = 'none';
+  }
+}
+async function restoreFromAutoBackup(){
+  try{
+    const v = await storageGet('backup_latest');
+    if(!v){ toast('Otomatik yedek bulunamadı'); return; }
+    const backup = JSON.parse(v);
+    await applyRestoredData(backup.snapshot, 'otomatik yedek (' + new Date(backup.backedUpAt).toLocaleString('tr-TR') + ')');
+  }catch(e){
+    toast('Yedek okunamadı');
+  }
+}
+
 /* ---------- DARK MODE ---------- */
 function toggleDarkMode(){
   const on = document.getElementById('dark-mode-toggle').checked;
@@ -1984,6 +2075,7 @@ document.addEventListener('touchmove', function(e){
 
 /* ---------- init ---------- */
 (async function init(){
+  document.getElementById('app-version-label').textContent = APP_VERSION;
   applyStoredTheme();
   const loggedInAuto = await tryAutoLogin();
   if(!loggedInAuto){
