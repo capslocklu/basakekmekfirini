@@ -363,6 +363,14 @@
       <label style="display:block;font-size:12px;font-weight:600;color:var(--tan);margin:22px 0 8px;text-transform:uppercase;letter-spacing:.03em;">🗑️ Çöp Kutusu</label>
       <button type="button" class="btn btn-ghost" style="width:100%;" onclick="openTrashModal()">Silinen Siparişleri Görüntüle</button>
 
+      <div id="telegram-config-section" style="display:none;">
+        <label style="display:block;font-size:12px;font-weight:600;color:var(--tan);margin:22px 0 8px;text-transform:uppercase;letter-spacing:.03em;">🔵 Telegram Bot Ayarları</label>
+        <div class="field"><label>Bot Token</label><input type="text" id="telegram-bot-token" placeholder="Ör: 123456789:AAE..."></div>
+        <div class="field"><label>Chat ID</label><input type="text" id="telegram-chat-id" placeholder="Ör: 927918399"></div>
+        <button type="button" class="btn btn-ghost" style="width:100%;" onclick="saveTelegramConfig()">Telegram Ayarlarını Kaydet</button>
+        <p style="font-size:11px;color:var(--tan);margin-top:8px;line-height:1.4;">Buraya kaydettiğiniz değerler Netlify'daki ortam değişkenlerinin yerine geçer — Netlify'a girmenize veya yeniden yayınlamanıza gerek kalmaz.</p>
+      </div>
+
       <p style="font-size:11.5px;color:var(--tan);margin-top:22px;line-height:1.5;" id="sync-explainer">Bu uygulama Firebase üzerinden çalışıyor: sipariş, ürün ve personel verileri internet üzerinden tüm cihazlarla anlık olarak senkronize edilir.</p>
 
       <div id="activity-log-section" style="display:none;margin-top:24px;">
@@ -843,6 +851,12 @@ function switchView(name){
     document.getElementById('activity-log-section').style.display = 'block';
     renderActivityLog();
     renderRecurringDueBanner();
+    if(session.role==='admin'){
+      document.getElementById('telegram-config-section').style.display = 'block';
+      loadTelegramConfigIntoForm();
+    } else {
+      document.getElementById('telegram-config-section').style.display = 'none';
+    }
   }
 }
 
@@ -1774,6 +1788,23 @@ async function saveSecurityQuestion(){
   session.security_question = q; session.security_answer = a;
   await saveUsers();
   toast('Güvenlik sorusu kaydedildi');
+}
+
+async function loadTelegramConfigIntoForm(){
+  try{
+    const v = await storageGet('telegram_config');
+    const cfg = v ? JSON.parse(v) : {};
+    document.getElementById('telegram-bot-token').value = cfg.botToken || '';
+    document.getElementById('telegram-chat-id').value = cfg.chatId || '';
+  }catch(e){}
+}
+async function saveTelegramConfig(){
+  const botToken = document.getElementById('telegram-bot-token').value.trim();
+  const chatId = document.getElementById('telegram-chat-id').value.trim();
+  if(!botToken || !chatId){ toast('Bot token ve chat ID girin'); return; }
+  await storageSet('telegram_config', JSON.stringify({botToken, chatId}));
+  toast('Telegram ayarları kaydedildi');
+  logActivity('Telegram bot ayarlarını güncelledi');
 }
 
 /* ---------- DARK MODE ---------- */
