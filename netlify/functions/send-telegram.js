@@ -73,13 +73,22 @@ exports.handler = async (event) => {
   const cors = { 'Access-Control-Allow-Origin': '*' };
   try {
     const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-    const botToken = process.env.TELEGRAM_BOT_TOKEN;
-    const chatId = process.env.TELEGRAM_CHAT_ID;
+    const accessToken = await getAccessToken(serviceAccount);
+
+    let botToken = process.env.TELEGRAM_BOT_TOKEN;
+    let chatId = process.env.TELEGRAM_CHAT_ID;
+    try {
+      const cfgJson = await getFirestoreDocValue(serviceAccount.project_id, accessToken, 'basak_app/telegram_config');
+      if (cfgJson) {
+        const cfg = JSON.parse(cfgJson);
+        if (cfg.botToken) botToken = cfg.botToken;
+        if (cfg.chatId) chatId = cfg.chatId;
+      }
+    } catch (e) { /* Firestore'da özel ayar yoksa ortam değişkenleri kullanılır */ }
     if (!botToken || !chatId) throw new Error('TELEGRAM_BOT_TOKEN veya TELEGRAM_CHAT_ID eksik');
 
     const type = (event.queryStringParameters && event.queryStringParameters.type) || 'tomorrow';
 
-    const accessToken = await getAccessToken(serviceAccount);
     const ordersJson = await getFirestoreDocValue(serviceAccount.project_id, accessToken, 'basak_app/orders');
     const orders = ordersJson ? JSON.parse(ordersJson) : [];
 
