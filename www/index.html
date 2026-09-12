@@ -566,7 +566,7 @@
 // Her GitHub'a yeni bir sürüm yüklendiğinde bu numarayı güncelleyin —
 // üst çubuktaki "v..." etiketi buradan geliyor, hangi sürümün canlıda
 // olduğunu tek bakışta anlamanızı sağlar.
-const APP_VERSION = "1.1.0";
+const APP_VERSION = "1.1.1";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAnCtP9iEQqbDS6CFH2U6yy56HDPUE_Kfc",
@@ -1430,7 +1430,7 @@ async function sendTelegram(type, btnEl){
   const controller = new AbortController();
   const timeoutId = setTimeout(()=>controller.abort(), 15000);
   try{
-    const resp = await fetch(`/.netlify/functions/send-telegram?type=${type}`, {signal: controller.signal});
+    const resp = await fetch(`/.netlify/functions/send-telegram?type=${type}&_=${Date.now()}`, {signal: controller.signal, cache: 'no-store'});
     clearTimeout(timeoutId);
     let data;
     try{ data = await resp.json(); }
