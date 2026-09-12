@@ -70,7 +70,7 @@ function escapeMd(s) {
 }
 
 exports.handler = async (event) => {
-  const cors = { 'Access-Control-Allow-Origin': '*' };
+  const cors = { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store, no-cache, must-revalidate', 'Pragma': 'no-cache' };
   try {
     const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
     const accessToken = await getAccessToken(serviceAccount);
