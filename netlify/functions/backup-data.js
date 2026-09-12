@@ -68,18 +68,19 @@ async function setFirestoreDocValue(projectId, accessToken, docPath, valueString
 }
 
 exports.handler = async () => {
-  const cors = { 'Access-Control-Allow-Origin': '*' };
+  const cors = { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store, no-cache, must-revalidate' };
   try {
     const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
     const accessToken = await getAccessToken(serviceAccount);
     const projectId = serviceAccount.project_id;
 
-    const [usersJson, productsJson, ordersJson, recurringJson, previousLatestJson] = await Promise.all([
+    const [usersJson, productsJson, ordersJson, recurringJson, previousLatestJson, telegramCfgJson] = await Promise.all([
       getFirestoreDocValue(projectId, accessToken, 'basak_app/users'),
       getFirestoreDocValue(projectId, accessToken, 'basak_app/products'),
       getFirestoreDocValue(projectId, accessToken, 'basak_app/orders'),
       getFirestoreDocValue(projectId, accessToken, 'basak_app/recurring_templates'),
-      getFirestoreDocValue(projectId, accessToken, 'basak_app/backup_latest')
+      getFirestoreDocValue(projectId, accessToken, 'basak_app/backup_latest'),
+      getFirestoreDocValue(projectId, accessToken, 'basak_app/telegram_config')
     ]);
 
     // Bir önceki yedeği "backup_previous" olarak sakla (varsa)
@@ -97,6 +98,30 @@ exports.handler = async () => {
     const newBackup = { snapshot, backedUpAt };
 
     await setFirestoreDocValue(projectId, accessToken, 'basak_app/backup_latest', JSON.stringify(newBackup), backedUpAt);
+
+    // Yedekleme başarılı olduğunda Telegram'a kısa bir onay mesajı gönder
+    // (bu adım isteğe bağlıdır; bot ayarlı değilse veya gönderim başarısız
+    // olursa yedeklemenin kendisi yine de başarılı sayılır)
+    let botToken = process.env.TELEGRAM_BOT_TOKEN;
+    let chatId = process.env.TELEGRAM_CHAT_ID;
+    if (telegramCfgJson) {
+      try {
+        const cfg = JSON.parse(telegramCfgJson);
+        if (cfg.botToken) botToken = cfg.botToken;
+        if (cfg.chatId) chatId = cfg.chatId;
+      } catch (e) { /* bozuksa ortam değişkenleri kullanılır */ }
+    }
+    if (botToken && chatId) {
+      const tarih = new Date(backedUpAt).toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' });
+      const confirmText = `✅ *Yedekleme tamamlandı*\n🕐 ${tarih}\n\n👥 ${snapshot.users.length} kullanıcı\n📦 ${snapshot.products.length} ürün\n📋 ${snapshot.orders.length} sipariş\n🔁 ${snapshot.recurringTemplates.length} şablon`;
+      try {
+        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: chatId, text: confirmText, parse_mode: 'Markdown' })
+        });
+      } catch (e) { /* Telegram bildirimi başarısız olsa bile yedekleme geçerlidir */ }
+    }
 
     return {
       statusCode: 200,
